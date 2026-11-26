@@ -1,9 +1,12 @@
-name: Build Launcher Multiplateforme
+name: Build et Release Launcher
 
 on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
@@ -16,15 +19,14 @@ jobs:
       - name: Installer les dependances
         run: |
           python -m pip install --upgrade pip
-          pip install minecraft-launcher-lib pyinstaller
+          pip install minecraft-launcher-lib pyinstaller pillow
       - name: Compiler pour Windows
         run: |
-          python -m PyInstaller --onefile --noconsole --icon=icone.ico --add-data "icone.ico;." --name "Manille et Mathis" launcher.py
-      - name: Uploader l'exe Windows
-        uses: actions/upload-artifact@v4
+          python -m PyInstaller --onefile --noconsole --icon=icone.ico --add-data "icone.ico;." --name "Manille-et-Mathis-Windows" launcher.py
+      - uses: actions/upload-artifact@v4
         with:
           name: Launcher-Windows
-          path: "dist/Manille et Mathis.exe"
+          path: "dist/Manille-et-Mathis-Windows.exe"
 
   build-macos:
     runs-on: macos-latest
@@ -36,13 +38,12 @@ jobs:
       - name: Installer les dependances
         run: |
           python3 -m pip install --upgrade pip
-          pip3 install minecraft-launcher-lib pyinstaller
+          pip3 install minecraft-launcher-lib pyinstaller pillow
       - name: Compiler pour macOS
         run: |
-          python3 -m PyInstaller --onefile --windowed --icon=icone.ico --add-data "icone.ico:." --name "Manille et Mathis" launcher.py
+          python3 -m PyInstaller --onedir --windowed --icon=icone.ico --add-data "icone.ico:." --name "Manille et Mathis" launcher.py
           cd dist && zip -r "Manille-et-Mathis-macOS.zip" "Manille et Mathis.app"
-      - name: Uploader l'app macOS
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: Launcher-macOS
           path: "dist/Manille-et-Mathis-macOS.zip"
@@ -59,12 +60,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-tk
           python3 -m pip install --upgrade pip
-          pip3 install minecraft-launcher-lib pyinstaller
+          pip3 install minecraft-launcher-lib pyinstaller pillow
       - name: Compiler pour Linux
         run: |
           python3 -m PyInstaller --onefile --noconsole --add-data "icone.ico:." --name "Manille-et-Mathis-Linux" launcher.py
-      - name: Uploader le binaire Linux
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: Launcher-Linux
           path: "dist/Manille-et-Mathis-Linux"
+
+  publier-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recuperer les 3 fichiers compiles
+        uses: actions/download-artifact@v4
+        with:
+          path: release-files
+          merge-multiple: true
+      - name: Publier dans GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Launcher Manille et Mathis"
+          body: "Téléchargez la version correspondant à votre système d'exploitation ci-dessous :"
+          files: release-files/*
+          prerelease: false
