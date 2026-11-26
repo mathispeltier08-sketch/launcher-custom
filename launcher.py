@@ -1,380 +1,361 @@
 import os
 import sys
 import json
+import ssl
 import shutil
 import zipfile
 import urllib.request
-import threading
 import subprocess
+import threading
 import tkinter as tk
 from tkinter import messagebox
+import certifi
 import minecraft_launcher_lib
 
-# ==========================================
-# CONFIGURATION DU SERVEUR
-# ==========================================
+# Forcer l'utilisation des certificats racine de certifi (corrige SSL: CERTIFICATE_VERIFY_FAILED sur Linux/macOS)
+os.environ["SSL_CERT_FILE"] = certifi.where()
+os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
+ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=certifi.where())
+
+# --- CONFIGURATION DU SERVEUR ---
 NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
-DOSSIER_NOM = ".manille-et-mathis"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
-RAM_DEFAUT = 4
+DOSSIER_NOM = ".manille-et-mathis"
+# --------------------------------
 
-# ==========================================
-# CHEMINS ET PARAMETRES
-# ==========================================
-DOSSIER_JEU = minecraft_launcher_lib.utils.get_minecraft_directory().replace(".minecraft", DOSSIER_NOM)
+def chemin_ressource(nom_fichier):
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, nom_fichier)
+    return os.path.join(os.path.abspath("."), nom_fichier)
+
+def obtenir_dossier_jeu():
+    base = minecraft_launcher_lib.utils.get_minecraft_directory()
+    return os.path.join(os.path.dirname(base), DOSSIER_NOM)
+
+DOSSIER_JEU = obtenir_dossier_jeu()
 FICHIER_CONFIG = os.path.join(DOSSIER_JEU, "launcher_config.json")
 
-
-def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
-
-def charger_config():
-    if os.path.exists(FICHIER_CONFIG):
-        try:
-            with open(FICHIER_CONFIG, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {"pseudo": "", "ram": RAM_DEFAUT, "logs": False}
-
-
-def sauvegarder_config(data):
-    os.makedirs(DOSSIER_JEU, exist_ok=True)
-    with open(FICHIER_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
-
-
-def nettoyer_bibliotheques_vides():
-    lib_dir = os.path.join(DOSSIER_JEU, "libraries")
-    if not os.path.exists(lib_dir):
-        return
-    for root_dir, _, files in os.walk(lib_dir):
-        for file in files:
-            chemin = os.path.join(root_dir, file)
-            try:
-                if os.path.getsize(chemin) == 0:
-                    os.remove(chemin)
-            except Exception:
-                pass
-
-
-def patch_https_requests():
-    import requests
-    old_request = requests.Session.request
-
-    def new_request(self, method, url, *args, **kwargs):
-        if isinstance(url, str) and url.startswith("http://libraries.minecraft.net"):
-            url = url.replace("http://", "https://", 1)
-        return old_request(self, method, url, *args, **kwargs)
-
-    requests.Session.request = new_request
+# Patch HTTPS pour les bibliotheques Minecraft 1.12.2
+_ancienne_urlopen = urllib.request.urlopen
+def _nouvelle_urlopen(url, *args, **kwargs):
+    if isinstance(url, str) and url.startswith("http://libraries.minecraft.net"):
+        url = url.replace("http://", "https://", 1)
+    elif hasattr(url, "full_url") and url.full_url.startswith("http://libraries.minecraft.net"):
+        url.full_url = url.full_url.replace("http://", "https://", 1)
+    if "context" not in kwargs:
+        kwargs["context"] = ssl.create_default_context(cafile=certifi.where())
+    return _ancienne_urlopen(url, *args, **kwargs)
+urllib.request.urlopen = _nouvelle_urlopen
 
 
 class LauncherApp:
     def __init__(self, root):
         self.root = root
         self.root.title(NOM_SERVEUR)
-        self.root.geometry("420x310")
+        self.root.geometry("420x270")
         self.root.resizable(False, False)
         self.root.configure(bg="#1E162B")
 
-        icone_path = resource_path("icone.ico")
+        icone_path = chemin_ressource("icone.ico")
         if os.path.exists(icone_path):
             try:
                 self.root.iconbitmap(icone_path)
             except Exception:
                 pass
 
-        self.config = charger_config()
-        self.ram_var = tk.IntVar(value=self.config.get("ram", RAM_DEFAUT))
-        self.logs_var = tk.BooleanVar(value=self.config.get("logs", False))
-        self.en_cours = False
+        self.config = self.charger_config()
 
-        self.creer_interface()
-
-    def creer_interface(self):
-        # Barre superieure avec bouton Parametres
-        top_bar = tk.Frame(self.root, bg="#1E162B")
-        top_bar.pack(fill="x", padx=15, pady=(12, 0))
+        # En-tete avec bouton Parametres
+        header_frame = tk.Frame(root, bg="#1E162B")
+        header_frame.pack(fill="x", padx=15, pady=(12, 0))
 
         btn_params = tk.Button(
-            top_bar,
+            header_frame,
             text="⚙ Paramètres",
-            font=("Segoe UI", 9, "bold"),
+            font=("Segoe UI", 9),
             bg="#2E2242",
             fg="#D8C8F0",
             activebackground="#43325E",
             activeforeground="white",
             relief="flat",
             cursor="hand2",
-            padx=10,
+            padx=8,
             pady=3,
-            command=self.ouvrir_parametres
+            command=self.ouvrir_parametres,
         )
         btn_params.pack(side="right")
 
         # Titre principal
         tk.Label(
-            self.root,
+            root,
             text=NOM_SERVEUR,
-            font=("Segoe UI", 21, "bold"),
+            font=("Segoe UI", 20, "bold"),
             bg="#1E162B",
-            fg="#FFFFFF"
-        ).pack(pady=(12, 22))
-
-        # Label Pseudo
-        tk.Label(
-            self.root,
-            text="Entrez votre pseudo Minecraft :",
-            font=("Segoe UI", 10),
-            bg="#1E162B",
-            fg="#C8B6E2"
-        ).pack(pady=(0, 6))
+            fg="#FFFFFF",
+        ).pack(pady=(5, 18))
 
         # Champ Pseudo
+        tk.Label(
+            root,
+            text="PSEUDO EN JEU",
+            font=("Segoe UI", 9, "bold"),
+            bg="#1E162B",
+            fg="#B79EE0",
+        ).pack()
+
         self.entry_pseudo = tk.Entry(
-            self.root,
-            font=("Segoe UI", 13, "bold"),
+            root,
+            font=("Segoe UI", 13),
             justify="center",
             bg="#2E2242",
             fg="#FFFFFF",
             insertbackground="#FFFFFF",
             relief="flat",
-            width=22
+            width=22,
         )
-        self.entry_pseudo.pack(ipady=7)
+        self.entry_pseudo.pack(pady=(6, 18), ipady=6)
         self.entry_pseudo.insert(0, self.config.get("pseudo", ""))
-        self.entry_pseudo.bind("<Return>", lambda e: self.demarrer())
 
         # Bouton Jouer
         self.btn_jouer = tk.Button(
-            self.root,
+            root,
             text="JOUER",
             font=("Segoe UI", 13, "bold"),
-            bg="#7B2CBF",
+            bg="#8A4FFF",
             fg="#FFFFFF",
-            activebackground="#9D4EDD",
+            activebackground="#7238E8",
             activeforeground="#FFFFFF",
             relief="flat",
             cursor="hand2",
-            width=18,
-            command=self.demarrer
+            width=20,
+            command=self.demarrer_lancement,
         )
-        self.btn_jouer.pack(pady=(22, 12), ipady=6)
+        self.btn_jouer.pack(ipady=6)
 
         # Statut
-        self.lbl_statut = tk.Label(
-            self.root,
+        self.label_statut = tk.Label(
+            root,
             text="Prêt à jouer",
             font=("Segoe UI", 9),
             bg="#1E162B",
-            fg="#A695C2"
+            fg="#A694C2",
         )
-        self.lbl_statut.pack()
+        self.label_statut.pack(pady=(12, 0))
+
+    def charger_config(self):
+        if os.path.exists(FICHIER_CONFIG):
+            try:
+                with open(FICHIER_CONFIG, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {"pseudo": "", "ram": 4, "logs": False}
+
+    def sauvegarder_config(self):
+        os.makedirs(DOSSIER_JEU, exist_ok=True)
+        with open(FICHIER_CONFIG, "w", encoding="utf-8") as f:
+            json.dump(self.config, f, indent=2)
 
     def ouvrir_parametres(self):
-        fenetre_params = tk.Toplevel(self.root)
-        fenetre_params.title("Paramètres")
-        fenetre_params.geometry("340x255")
-        fenetre_params.resizable(False, False)
-        fenetre_params.configure(bg="#1E162B")
-        fenetre_params.transient(self.root)
-        fenetre_params.grab_set()
+        win = tk.Toplevel(self.root)
+        win.title("Paramètres")
+        win.geometry("330x235")
+        win.resizable(False, False)
+        win.configure(bg="#1E162B")
+        win.transient(self.root)
+        win.grab_set()
 
-        icone_path = resource_path("icone.ico")
+        icone_path = chemin_ressource("icone.ico")
         if os.path.exists(icone_path):
             try:
-                fenetre_params.iconbitmap(icone_path)
+                win.iconbitmap(icone_path)
             except Exception:
                 pass
 
         tk.Label(
-            fenetre_params,
-            text="Mémoire RAM allouée",
-            font=("Segoe UI", 12, "bold"),
-            bg="#1E162B",
-            fg="#FFFFFF"
-        ).pack(pady=(15, 5))
-
-        lbl_ram_val = tk.Label(
-            fenetre_params,
-            text=f"{self.ram_var.get()} Go",
+            win,
+            text="Mémoire RAM allouée (Go)",
             font=("Segoe UI", 11, "bold"),
             bg="#1E162B",
-            fg="#C77DFF"
+            fg="#FFFFFF",
+        ).pack(pady=(15, 5))
+
+        ram_var = tk.IntVar(value=self.config.get("ram", 4))
+        lbl_valeur = tk.Label(
+            win,
+            text=f"{ram_var.get()} Go",
+            font=("Segoe UI", 12, "bold"),
+            bg="#1E162B",
+            fg="#B79EE0",
         )
-        lbl_ram_val.pack(pady=(0, 4))
+        lbl_valeur.pack()
 
-        def maj_label_ram(val):
-            lbl_ram_val.config(text=f"{int(float(val))} Go")
+        def maj_label(val):
+            lbl_valeur.config(text=f"{int(float(val))} Go")
 
-        scale_ram = tk.Scale(
-            fenetre_params,
+        scale = tk.Scale(
+            win,
             from_=2,
             to=16,
             orient="horizontal",
-            variable=self.ram_var,
+            variable=ram_var,
             showvalue=False,
-            length=230,
             bg="#1E162B",
             fg="#FFFFFF",
             troughcolor="#2E2242",
-            activebackground="#9D4EDD",
             highlightthickness=0,
-            command=maj_label_ram
+            activebackground="#8A4FFF",
+            length=230,
+            command=maj_label,
         )
-        scale_ram.pack(pady=4)
+        scale.pack(pady=6)
 
-        # Case a cocher Logs a l'ouverture
+        logs_var = tk.BooleanVar(value=self.config.get("logs", False))
         chk_logs = tk.Checkbutton(
-            fenetre_params,
+            win,
             text="Afficher la console de logs au lancement",
-            variable=self.logs_var,
+            variable=logs_var,
             font=("Segoe UI", 9),
             bg="#1E162B",
             fg="#D8C8F0",
             selectcolor="#2E2242",
             activebackground="#1E162B",
             activeforeground="#FFFFFF",
-            cursor="hand2"
+            highlightthickness=0,
+            cursor="hand2",
         )
-        chk_logs.pack(pady=(12, 8))
+        chk_logs.pack(pady=(8, 12))
 
-        def valider_params():
-            self.config["ram"] = int(self.ram_var.get())
-            self.config["logs"] = bool(self.logs_var.get())
-            sauvegarder_config(self.config)
-            fenetre_params.destroy()
+        def valider():
+            self.config["ram"] = int(ram_var.get())
+            self.config["logs"] = bool(logs_var.get())
+            self.sauvegarder_config()
+            win.destroy()
 
         tk.Button(
-            fenetre_params,
+            win,
             text="Enregistrer",
             font=("Segoe UI", 10, "bold"),
-            bg="#7B2CBF",
+            bg="#8A4FFF",
             fg="#FFFFFF",
-            activebackground="#9D4EDD",
+            activebackground="#7238E8",
             activeforeground="#FFFFFF",
             relief="flat",
             cursor="hand2",
             width=14,
-            command=valider_params
-        ).pack(pady=(8, 0), ipady=4)
+            command=valider,
+        ).pack(ipady=3)
 
     def maj_statut(self, texte):
-        self.root.after(0, lambda: self.lbl_statut.config(text=texte))
+        self.root.after(0, lambda: self.label_statut.config(text=texte))
 
-    def demarrer(self):
-        if self.en_cours:
+    def nettoyer_fichiers_vides(self):
+        dossier_lib = os.path.join(DOSSIER_JEU, "libraries")
+        if not os.path.exists(dossier_lib):
             return
-
-        pseudo = self.entry_pseudo.get().strip()
-        if not pseudo or len(pseudo) < 3 or len(pseudo) > 16:
-            messagebox.showwarning("Pseudo invalide", "Veuillez entrer un pseudo valide (3 à 16 caractères).")
-            return
-
-        self.config["pseudo"] = pseudo
-        self.config["ram"] = int(self.ram_var.get())
-        self.config["logs"] = bool(self.logs_var.get())
-        sauvegarder_config(self.config)
-
-        self.en_cours = True
-        self.btn_jouer.config(state="disabled", bg="#4A3B63")
-        self.entry_pseudo.config(state="disabled")
-
-        threading.Thread(target=self.processus_lancement, args=(pseudo,), daemon=True).start()
+        for racine, _, fichiers in os.walk(dossier_lib):
+            for fichier in fichiers:
+                chemin = os.path.join(racine, fichier)
+                try:
+                    if os.path.getsize(chemin) == 0:
+                        os.remove(chemin)
+                except Exception:
+                    pass
 
     def synchroniser_pack(self):
         self.maj_statut("Téléchargement des mods et configurations...")
-        zip_temp = os.path.join(DOSSIER_JEU, "packserveurs_temp.zip")
         os.makedirs(DOSSIER_JEU, exist_ok=True)
+        zip_temp = os.path.join(DOSSIER_JEU, "packserveurs_temp.zip")
 
+        ctx = ssl.create_default_context(cafile=certifi.where())
         req = urllib.request.Request(URL_PACK_ZIP, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req) as response, open(zip_temp, "wb") as out_file:
-            shutil.copyfileobj(response, out_file)
+        with urllib.request.urlopen(req, context=ctx) as resp, open(zip_temp, "wb") as out:
+            shutil.copyfileobj(resp, out)
 
-        self.maj_statut("Mise à jour des fichiers du serveur...")
+        self.maj_statut("Extraction et mise à jour des fichiers...")
         for dossier in ["mods", "config", "fancymenu_data", "fancymenu_setups"]:
-            chemin_cible = os.path.join(DOSSIER_JEU, dossier)
-            if os.path.exists(chemin_cible):
-                shutil.rmtree(chemin_cible, ignore_errors=True)
+            cible = os.path.join(DOSSIER_JEU, dossier)
+            if os.path.exists(cible):
+                shutil.rmtree(cible, ignore_errors=True)
 
-        with zipfile.ZipFile(zip_temp, "r") as zip_ref:
-            zip_ref.extractall(DOSSIER_JEU)
+        with zipfile.ZipFile(zip_temp, "r") as zf:
+            zf.extractall(DOSSIER_JEU)
 
         if os.path.exists(zip_temp):
             os.remove(zip_temp)
 
-    def processus_lancement(self, pseudo):
+    def demarrer_lancement(self):
+        pseudo = self.entry_pseudo.get().strip()
+        if not pseudo:
+            messagebox.showwarning("Pseudo manquant", "Veuillez entrer un pseudo avant de jouer.")
+            return
+
+        self.config["pseudo"] = pseudo
+        self.sauvegarder_config()
+
+        self.btn_jouer.config(state="disabled", bg="#563899")
+        threading.Thread(target=self.processus_jeu, args=(pseudo,), daemon=True).start()
+
+    def processus_jeu(self, pseudo):
         try:
-            patch_https_requests()
-            nettoyer_bibliotheques_vides()
+            self.nettoyer_fichiers_vides()
 
-            self.maj_statut("Vérification de Minecraft 1.12.2...")
-            minecraft_launcher_lib.install.install_minecraft_version(VERSION_MC, DOSSIER_JEU)
-
+            self.maj_statut("Vérification de Forge 1.12.2...")
             forge_version = minecraft_launcher_lib.forge.find_forge_version(VERSION_MC)
-            version_complete = f"{VERSION_MC}-forge-{forge_version.split('-')[1]}"
-            dossier_version_forge = os.path.join(DOSSIER_JEU, "versions", version_complete)
+            if not forge_version:
+                raise RuntimeError("Impossible de trouver la version Forge 1.12.2.")
 
-            if not os.path.exists(dossier_version_forge):
-                self.maj_statut("Installation de Forge 1.12.2 (patientez)...")
-                minecraft_launcher_lib.forge.install_forge_version(forge_version, DOSSIER_JEU)
+            version_id = f"{VERSION_MC}-forge-{forge_version.split('-', 1)[1]}"
+            dossier_version = os.path.join(DOSSIER_JEU, "versions", version_id)
+
+            if not os.path.exists(dossier_version):
+                self.maj_statut("Installation de Minecraft & Forge (patientez)...")
+                callback = {"setStatus": lambda text: self.maj_statut(text)}
+                minecraft_launcher_lib.forge.install_forge_version(
+                    forge_version, DOSSIER_JEU, callback=callback
+                )
 
             self.synchroniser_pack()
 
             self.maj_statut("Lancement du jeu...")
-            ram_go = int(self.config.get("ram", RAM_DEFAUT))
-            afficher_logs = bool(self.config.get("logs", False))
+            ram_go = self.config.get("ram", 4)
+            afficher_logs = self.config.get("logs", False)
 
             options = {
                 "username": pseudo,
                 "uuid": "",
                 "token": "",
-                "jvmArguments": [f"-Xmx{ram_go}G", f"-Xms2G"]
+                "jvmArguments": [f"-Xmx{ram_go}G", f"-Xms2G"],
             }
 
             commande = minecraft_launcher_lib.command.get_minecraft_command(
-                version_complete, DOSSIER_JEU, options
+                version_id, DOSSIER_JEU, options
             )
 
             if afficher_logs:
-                if os.name == "nt":
-                    subprocess.Popen(
-                        commande,
-                        cwd=DOSSIER_JEU,
-                        creationflags=subprocess.CREATE_NEW_CONSOLE
-                    )
+                if sys.platform == "win32":
+                    subprocess.Popen(commande, cwd=DOSSIER_JEU, creationflags=subprocess.CREATE_NEW_CONSOLE)
                 else:
                     subprocess.Popen(commande, cwd=DOSSIER_JEU)
             else:
-                popen_kwargs = {
+                kwargs = {
                     "cwd": DOSSIER_JEU,
                     "stdout": subprocess.DEVNULL,
                     "stderr": subprocess.DEVNULL,
                     "stdin": subprocess.DEVNULL,
                 }
-                if os.name == "nt":
-                    popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-                subprocess.Popen(commande, **popen_kwargs)
+                if sys.platform == "win32":
+                    kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+                subprocess.Popen(commande, **kwargs)
 
             self.root.after(1500, self.root.destroy)
 
         except Exception as e:
             err_msg = str(e)
-            self.root.after(0, lambda: messagebox.showerror("Erreur", "Une erreur est survenue : " + err_msg))
-            self.root.after(0, self.reinitialiser_ui)
-
-    def reinitialiser_ui(self):
-        self.en_cours = False
-        self.btn_jouer.config(state="normal", bg="#7B2CBF")
-        self.entry_pseudo.config(state="normal")
-        self.maj_statut("Prêt à jouer")
+            self.root.after(0, lambda: messagebox.showerror("Erreur", f"Une erreur est survenue : {err_msg}"))
+            self.root.after(0, lambda: self.btn_jouer.config(state="normal", bg="#8A4FFF"))
+            self.maj_statut("Prêt à jouer")
 
 
 if __name__ == "__main__":
