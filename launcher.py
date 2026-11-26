@@ -12,6 +12,7 @@ import hashlib
 import urllib.parse
 import tkinter as tk
 from tkinter import messagebox
+from PIL import Image, ImageTk, ImageEnhance
 import certifi
 import minecraft_launcher_lib
 
@@ -57,10 +58,10 @@ urllib.request.urlopen = _nouvelle_urlopen
 class LauncherApp:
     def __init__(self, root):
         self.root = root
-        self.root.title(NOM_SERVEUR)
-        self.root.geometry("420x270")
-        self.root.resizable(False, False)
-        self.root.configure(bg="#1E162B")
+        self.root.title(f"{NOM_SERVEUR} - v{VERSION_LAUNCHER} - Édition anniversaire")
+        self.root.geometry("940x580")
+        self.root.minsize(780, 510)
+        self.root.configure(bg="#160D22")
 
         icone_path = chemin_ressource("icone.ico")
         if os.path.exists(icone_path):
@@ -70,84 +71,163 @@ class LauncherApp:
                 pass
 
         self.config = self.charger_config()
+        self.image_fond_originale = None
+        self.image_fond_tk = None
 
-        # En-tete avec bouton Parametres
-        header_frame = tk.Frame(root, bg="#1E162B")
-        header_frame.pack(fill="x", padx=15, pady=(12, 0))
+        self.canvas = tk.Canvas(root, bg="#160D22", bd=0, highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
 
-        btn_params = tk.Button(
-            header_frame,
-            text="⚙ Paramètres",
-            font=("Segoe UI", 9),
-            bg="#2E2242",
-            fg="#D8C8F0",
-            activebackground="#43325E",
-            activeforeground="white",
-            relief="flat",
-            cursor="hand2",
-            padx=8,
-            pady=3,
-            command=self.ouvrir_parametres,
+        fond_path = chemin_ressource("fond_anniversaire.png")
+        if os.path.exists(fond_path):
+            try:
+                image = Image.open(fond_path).convert("RGB")
+                self.image_fond_originale = ImageEnhance.Brightness(image).enhance(0.52)
+            except Exception as erreur:
+                print(f"Arrière-plan non chargé : {erreur}")
+
+        # Carte sombre et dorée au centre de l'image.
+        self.carte = tk.Frame(
+            self.canvas,
+            bg="#241535",
+            bd=0,
+            highlightthickness=2,
+            highlightbackground="#E4B64F",
         )
-        btn_params.pack(side="right")
+        self.carte_fenetre = self.canvas.create_window(
+            470, 290, window=self.carte, width=440, height=470
+        )
 
-        # Titre principal
         tk.Label(
-            root,
-            text=NOM_SERVEUR,
-            font=("Segoe UI", 20, "bold"),
-            bg="#1E162B",
+            self.carte,
+            text="  ✦ ÉDITION ANNIVERSAIRE ✦  ",
+            font=("Segoe UI", 9, "bold"),
+            bg="#E4B64F",
+            fg="#241535",
+            padx=10,
+            pady=5,
+        ).pack(pady=(22, 10))
+
+        tk.Label(
+            self.carte,
+            text="🎉  " + NOM_SERVEUR + "  🎂",
+            font=("Segoe UI", 23, "bold"),
+            bg="#241535",
             fg="#FFFFFF",
-        ).pack(pady=(5, 18))
+        ).pack()
 
-        # Champ Pseudo
         tk.Label(
-            root,
+            self.carte,
+            text="Une aventure en blocs, en fête !",
+            font=("Segoe UI", 10, "italic"),
+            bg="#241535",
+            fg="#DCCAF5",
+        ).pack(pady=(4, 20))
+
+        tk.Label(
+            self.carte,
             text="PSEUDO EN JEU",
             font=("Segoe UI", 9, "bold"),
-            bg="#1E162B",
-            fg="#B79EE0",
+            bg="#241535",
+            fg="#E4B64F",
         ).pack()
 
         self.entry_pseudo = tk.Entry(
-            root,
+            self.carte,
             font=("Segoe UI", 13),
             justify="center",
-            bg="#2E2242",
+            bg="#38234C",
             fg="#FFFFFF",
             insertbackground="#FFFFFF",
             relief="flat",
-            width=22,
+            width=25,
+            highlightthickness=1,
+            highlightbackground="#725092",
+            highlightcolor="#A877D1",
         )
-        self.entry_pseudo.pack(pady=(6, 18), ipady=6)
+        self.entry_pseudo.pack(pady=(7, 18), ipady=8)
         self.entry_pseudo.insert(0, self.config.get("pseudo", ""))
 
-        # Bouton Jouer
         self.btn_jouer = tk.Button(
-            root,
-            text="JOUER",
+            self.carte,
+            text="JOUER MAINTENANT",
             font=("Segoe UI", 13, "bold"),
             bg="#8A4FFF",
             fg="#FFFFFF",
-            activebackground="#7238E8",
+            activebackground="#A36BFF",
+            activeforeground="#FFFFFF",
+            disabledforeground="#C7B8DA",
+            relief="flat",
+            cursor="hand2",
+            width=24,
+            command=self.demarrer_lancement,
+        )
+        self.btn_jouer.pack(ipady=9)
+
+        self.label_statut = tk.Label(
+            self.carte,
+            text="Prêt pour la fête ✨",
+            font=("Segoe UI", 9),
+            bg="#241535",
+            fg="#CDB8E8",
+        )
+        self.label_statut.pack(pady=(14, 12))
+
+        tk.Button(
+            self.carte,
+            text="⚙  Paramètres",
+            font=("Segoe UI", 9),
+            bg="#38234C",
+            fg="#EADDF8",
+            activebackground="#503268",
             activeforeground="#FFFFFF",
             relief="flat",
             cursor="hand2",
-            width=20,
-            command=self.demarrer_lancement,
-        )
-        self.btn_jouer.pack(ipady=6)
+            padx=14,
+            pady=6,
+            command=self.ouvrir_parametres,
+        ).pack()
 
-        # Statut
-        self.label_statut = tk.Label(
-            root,
-            text="Prêt à jouer",
-            font=("Segoe UI", 9),
-            bg="#1E162B",
-            fg="#A694C2",
-        )
-        self.label_statut.pack(pady=(12, 0))
+        tk.Label(
+            self.carte,
+            text=f"Launcher v{VERSION_LAUNCHER}  •  Minecraft {VERSION_MC}  •  Pack vérifié",
+            font=("Segoe UI", 8),
+            bg="#241535",
+            fg="#927CA9",
+        ).pack(pady=(16, 0))
+
+        self.root.bind("<Configure>", self.redimensionner_interface)
+        self.root.after(20, self.redimensionner_interface)
         self.root.after(1200, self.demarrer_verification_mise_a_jour)
+
+    def redimensionner_interface(self, event=None):
+        largeur = max(self.root.winfo_width(), 1)
+        hauteur = max(self.root.winfo_height(), 1)
+        self.canvas.coords(self.carte_fenetre, largeur // 2, hauteur // 2)
+
+        if self.image_fond_originale is None:
+            return
+
+        ratio = max(
+            largeur / self.image_fond_originale.width,
+            hauteur / self.image_fond_originale.height,
+        )
+        taille = (
+            max(1, int(self.image_fond_originale.width * ratio)),
+            max(1, int(self.image_fond_originale.height * ratio)),
+        )
+        image = self.image_fond_originale.resize(taille, Image.Resampling.LANCZOS)
+        gauche = max(0, (image.width - largeur) // 2)
+        haut = max(0, (image.height - hauteur) // 2)
+        image = image.crop((gauche, haut, gauche + largeur, haut + hauteur))
+        self.image_fond_tk = ImageTk.PhotoImage(image)
+
+        if hasattr(self, "fond_canvas"):
+            self.canvas.itemconfig(self.fond_canvas, image=self.image_fond_tk)
+        else:
+            self.fond_canvas = self.canvas.create_image(
+                0, 0, anchor="nw", image=self.image_fond_tk
+            )
+            self.canvas.tag_lower(self.fond_canvas)
 
     @staticmethod
     def comparer_versions(a, b):
