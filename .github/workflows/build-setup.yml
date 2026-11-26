@@ -1,0 +1,42 @@
+name: Compiler et publier le setup
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: "x64"
+      - name: Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pillow certifi minecraft-launcher-lib
+      - name: Compiler le launcher en onedir
+        shell: powershell
+        run: |
+          pyinstaller --noconfirm --clean --onedir --windowed --noupx --name launcher --add-data "fond_anniversaire.png;." --collect-all certifi --collect-all minecraft_launcher_lib launcher_anniversaire_auto_update.py
+      - name: Compiler le setup
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.9
+        with:
+          path: setup.iss
+          options: /O+
+      - name: Calculer le SHA-256
+        shell: powershell
+        run: Get-FileHash "installer/Manille-et-Mathis-Launcher-Setup.exe" -Algorithm SHA256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Manille-et-Mathis-Launcher-Setup
+          path: installer/Manille-et-Mathis-Launcher-Setup.exe
+          compression-level: 0
+      - name: Joindre à la Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer/Manille-et-Mathis-Launcher-Setup.exe
