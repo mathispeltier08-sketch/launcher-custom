@@ -1,8 +1,11 @@
 name: Compiler et publier le setup
+
 on:
   workflow_dispatch:
   push:
-    tags: ["v*"]
+    branches:
+      - main
+
 permissions:
   contents: write
 jobs:
