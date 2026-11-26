@@ -26,7 +26,7 @@ NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 DOSSIER_NOM = ".manille-et-mathis"
-VERSION_LAUNCHER = "1.0.0"
+VERSION_LAUNCHER = "1.0.1"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 # --------------------------------
 
