@@ -1,0 +1,8 @@
+{
+  "version": "1.0.2",
+  "download_url": "https://github.com/mathispeltier08-sketch/launcher-custom/releases/latest/download/Manille-et-Mathis-Launcher-Setup.exe",
+  "sha256": "REMPLACER_PAR_LE_SHA256_DU_SETUP",
+  "message": "Mise à jour automatique du launcher.",
+  "mandatory": true,
+  "type": "setup"
+}
