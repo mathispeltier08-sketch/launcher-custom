@@ -26,7 +26,7 @@ NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 DOSSIER_NOM = ".manille-et-mathis"
-VERSION_LAUNCHER = "1.0.3"
+VERSION_LAUNCHER = "1.0.2"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 # --------------------------------
 
@@ -59,8 +59,8 @@ class LauncherApp:
     def __init__(self, root):
         self.root = root
         self.root.title(NOM_SERVEUR)
-        self.root.geometry("940x580")
-        self.root.minsize(780, 510)
+        self.root.geometry("900x560")
+        self.root.minsize(760, 500)
         self.root.configure(bg="#160D22")
 
         icone_path = chemin_ressource("icone.ico")
@@ -90,7 +90,7 @@ class LauncherApp:
         if os.path.exists(logo_path):
             try:
                 logo = Image.open(logo_path).convert("RGBA")
-                logo.thumbnail((190, 190), Image.Resampling.LANCZOS)
+                logo.thumbnail((220, 150), Image.Resampling.LANCZOS)
                 self.logo_tk = ImageTk.PhotoImage(logo)
             except Exception as erreur:
                 print(f"Logo non chargé : {erreur}")
@@ -99,10 +99,11 @@ class LauncherApp:
             self.canvas,
             bg="#241535",
             bd=0,
-            highlightthickness=0,
+            highlightthickness=1,
+            highlightbackground="#5E4378",
         )
         self.carte_fenetre = self.canvas.create_window(
-            470, 290, window=self.carte, width=440, height=470
+            450, 280, window=self.carte, width=390, height=360
         )
 
         # Ce label reste caché, mais permet aux opérations de mise à jour
@@ -133,10 +134,13 @@ class LauncherApp:
                 bg="#241535",
                 bd=0,
             ).pack(pady=marge_haut)
+        else:
+            # Le logo doit être fourni sous le nom exact logo.png.
+            tk.Frame(parent, bg="#241535", height=75).pack(fill="x", pady=(15, 5))
 
     def afficher_page_bienvenue(self):
         self.vider_carte()
-        self.afficher_logo(self.carte, (45, 35))
+        self.afficher_logo(self.carte, (30, 25))
 
         self.entry_pseudo = tk.Entry(
             self.carte,
@@ -152,7 +156,21 @@ class LauncherApp:
             highlightcolor="#A877D1",
         )
         self.entry_pseudo.pack(pady=(0, 18), ipady=8)
-        self.entry_pseudo.focus_set()
+        self.entry_pseudo.insert(0, "Pseudo")
+        self.entry_pseudo.config(fg="#B8A7C9")
+
+        def retirer_placeholder(event=None):
+            if self.entry_pseudo.get() == "Pseudo":
+                self.entry_pseudo.delete(0, "end")
+                self.entry_pseudo.config(fg="#FFFFFF")
+
+        def remettre_placeholder(event=None):
+            if not self.entry_pseudo.get().strip():
+                self.entry_pseudo.insert(0, "Pseudo")
+                self.entry_pseudo.config(fg="#B8A7C9")
+
+        self.entry_pseudo.bind("<FocusIn>", retirer_placeholder)
+        self.entry_pseudo.bind("<FocusOut>", remettre_placeholder)
         self.entry_pseudo.bind("<Return>", lambda event: self.se_connecter())
 
         tk.Button(
@@ -171,7 +189,7 @@ class LauncherApp:
 
     def se_connecter(self):
         pseudo = self.entry_pseudo.get().strip()
-        if not pseudo:
+        if not pseudo or pseudo == "Pseudo":
             messagebox.showwarning("Pseudo manquant", "Veuillez entrer un pseudo.")
             return
         self.config["pseudo"] = pseudo
@@ -180,7 +198,7 @@ class LauncherApp:
 
     def afficher_page_connectee(self):
         self.vider_carte()
-        self.afficher_logo(self.carte, (28, 22))
+        self.afficher_logo(self.carte, (22, 18))
 
         pseudo = self.config.get("pseudo", "").strip()
         tk.Label(

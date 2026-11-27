@@ -37,6 +37,14 @@ jobs:
           python-version: "3.11"
           architecture: "x64"
 
+      - name: Vérifier les fichiers visuels
+        shell: bash
+        run: |
+          test -f launcher.py || (echo "launcher.py manquant" && exit 1)
+          test -f fond_anniversaire.png || (echo "fond_anniversaire.png manquant" && exit 1)
+          test -f logo.png || (echo "logo.png manquant" && exit 1)
+          test -f icone.ico || (echo "icone.ico manquant" && exit 1)
+
       - name: Installer les dépendances Python
         shell: bash
         run: |
@@ -63,6 +71,7 @@ jobs:
             --name launcher `
             --icon "icone.ico" `
             --add-data "fond_anniversaire.png;." `
+            --add-data "logo.png;." `
             --collect-all certifi `
             --collect-all minecraft_launcher_lib `
             launcher.py
@@ -83,6 +92,7 @@ jobs:
             --noupx \
             --name launcher \
             --add-data "fond_anniversaire.png:." \
+            --add-data "logo.png:." \
             --collect-all certifi \
             --collect-all minecraft_launcher_lib \
             launcher.py
