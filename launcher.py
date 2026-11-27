@@ -26,7 +26,7 @@ ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=ce
 
 NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
-VERSION_LAUNCHER = "1.0.9"
+VERSION_LAUNCHER = "1.0.10"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 URL_EVENEMENT_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/evenement.json"
@@ -205,15 +205,15 @@ class LauncherApp:
         self.bg_interface_label = tk.Label(self.interface, image=self.fond_tk, bg="#111019", bd=0)
         self.bg_interface_label.place(x=0, y=0, relwidth=1, relheight=1)
 
-        self.sidebar = tk.Frame(self.interface, bg="#17141F", width=245)
+        self.sidebar = tk.Frame(self.interface, bg="#17141F", width=245, highlightthickness=1, highlightbackground="#30283A")
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
         self.logo(self.sidebar, (20, 18))
 
         pseudo = self.config.get("pseudo", "")
         self.profil_frame = tk.Frame(self.sidebar, bg="#17141F")
-        self.profil_frame.pack(pady=(0, 22))
-        self.avatar_label = tk.Label(self.profil_frame, bg="#17141F", width=56, height=56)
+        self.profil_frame.pack(pady=(0, 18))
+        self.avatar_label = tk.Label(self.profil_frame, bg="#17141F", bd=0)
         self.avatar_label.pack(side="left", padx=(0, 10))
         tk.Label(self.profil_frame, text=pseudo, font=("Segoe UI", 13, "bold"),
                  bg="#17141F", fg="#FFFFFF").pack(side="left")
@@ -230,9 +230,8 @@ class LauncherApp:
         self.zone_droite.pack(side="left", fill="both", expand=True)
         self.zone_background = tk.Label(self.zone_droite, image=self.fond_tk, bg="#111019", bd=0)
         self.zone_background.place(x=0, y=0, relwidth=1, relheight=1)
-        self.contenu = tk.Frame(self.zone_droite, bg="#17141F", highlightthickness=1,
-                                highlightbackground="#4B3A60")
-        self.contenu.pack(fill="both", expand=True, padx=34, pady=(34, 112))
+        self.contenu = tk.Frame(self.zone_droite, bg="#17141F", highlightthickness=0)
+        self.contenu.pack(fill="both", expand=True, padx=52, pady=(52, 126))
 
         self.footer = tk.Frame(self.zone_droite, bg="#17141F", height=88)
         self.footer.pack(fill="x", side="bottom")
@@ -272,7 +271,7 @@ class LauncherApp:
                 image = Image.open(io.BytesIO(reponse.read())).convert("RGBA")
             image = image.resize((56, 56), Image.Resampling.NEAREST)
             self.avatar_tk = ImageTk.PhotoImage(image)
-            self.root.after(0, lambda: self.avatar_label.config(image=self.avatar_tk, width=56, height=56)
+            self.root.after(0, lambda: self.avatar_label.config(image=self.avatar_tk)
                             if self.avatar_label.winfo_exists() else None)
         except Exception:
             pass
@@ -305,7 +304,7 @@ class LauncherApp:
 
     def afficher_page_jouer(self):
         centre = tk.Frame(self.contenu, bg="#17141F")
-        centre.place(relx=.5, rely=.46, anchor="center")
+        centre.place(relx=.5, rely=.5, anchor="center")
         tk.Label(centre, text="Prochain événement", font=("Segoe UI", 15),
                  bg="#17141F", fg="#BCA8D0").pack(pady=(0, 16))
         self.label_decompte = tk.Label(centre, text="Chargement…",
