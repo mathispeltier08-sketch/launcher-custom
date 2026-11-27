@@ -26,7 +26,7 @@ ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=ce
 
 NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
-VERSION_LAUNCHER = "1.0.15"
+VERSION_LAUNCHER = "1.0.16"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 URL_EVENEMENT_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/evenement.json"
@@ -577,16 +577,39 @@ class LauncherApp:
         self.root.after(0,lambda:self.label_statut.config(text=texte) if hasattr(self,"label_statut") and self.label_statut.winfo_exists() else None)
 
     def synchroniser_pack(self):
-        self.maj_statut("Téléchargement du pack…"); os.makedirs(DOSSIER_JEU,exist_ok=True)
-        temp=os.path.join(DOSSIER_JEU,"pack_temp.zip")
-        req=urllib.request.Request(URL_PACK_ZIP,headers={"User-Agent":"Launcher"})
-        ctx=ssl.create_default_context(cafile=certifi.where())
-        with urllib.request.urlopen(req,context=ctx) as r,open(temp,"wb") as out: shutil.copyfileobj(r,out)
-        for d in ["mods","config","fancymenu_data","fancymenu_setups"]:
-            cible=os.path.join(DOSSIER_JEU,d)
-            if os.path.exists(cible): shutil.rmtree(cible,ignore_errors=True)
-        with zipfile.ZipFile(temp) as z:z.extractall(DOSSIER_JEU)
+        self.maj_statut("Téléchargement du pack…")
+        os.makedirs(DOSSIER_JEU, exist_ok=True)
+        temp = os.path.join(DOSSIER_JEU, "pack_temp.zip")
+
+        # La synchronisation remplace le dossier config. On conserve donc la
+        # session Azuriom avant la suppression, puis on la restaure juste après.
+        session_auth = None
+        if os.path.exists(FICHIER_SESSION_AUTH):
+            with open(FICHIER_SESSION_AUTH, "rb") as session:
+                session_auth = session.read()
+
+        req = urllib.request.Request(URL_PACK_ZIP, headers={"User-Agent": "Launcher"})
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(req, context=ctx) as r, open(temp, "wb") as out:
+            shutil.copyfileobj(r, out)
+
+        for dossier in ["mods", "config", "fancymenu_data", "fancymenu_setups"]:
+            cible = os.path.join(DOSSIER_JEU, dossier)
+            if os.path.exists(cible):
+                shutil.rmtree(cible, ignore_errors=True)
+
+        with zipfile.ZipFile(temp) as archive:
+            archive.extractall(DOSSIER_JEU)
         os.remove(temp)
+
+        if session_auth is not None:
+            os.makedirs(os.path.dirname(FICHIER_SESSION_AUTH), exist_ok=True)
+            with open(FICHIER_SESSION_AUTH, "wb") as session:
+                session.write(session_auth)
+            try:
+                os.chmod(FICHIER_SESSION_AUTH, 0o600)
+            except OSError:
+                pass
 
     def demarrer_lancement(self):
         pseudo=self.config.get("pseudo","").strip()
