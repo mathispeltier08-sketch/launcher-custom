@@ -240,9 +240,6 @@ class LauncherApp:
         self.zone_background.place(x=0, y=0, relwidth=1, relheight=1)
         self.contenu = tk.Frame(self.zone_droite, bg="#111019", highlightthickness=0)
         self.contenu.pack(fill="both", expand=True, padx=52, pady=(52, 126))
-        self.contenu_background = tk.Label(self.contenu, image=self.fond_tk,
-                                           bg="#111019", bd=0)
-        self.contenu_background.place(x=0, y=0, relwidth=1, relheight=1)
 
         self.footer = tk.Frame(self.zone_droite, bg="#17141F", height=88)
         self.footer.pack(fill="x", side="bottom")
@@ -268,10 +265,11 @@ class LauncherApp:
     def changer_page(self, page):
         self.page_active = page
         for widget in self.contenu.winfo_children():
-            if widget is not self.contenu_background:
-                widget.destroy()
-        if self.contenu_background is not None and self.contenu_background.winfo_exists():
-            self.contenu_background.lower()
+            widget.destroy()
+        self.contenu_background = tk.Label(
+            self.contenu, image=self.fond_tk, bg="#111019", bd=0
+        )
+        self.contenu_background.place(x=0, y=0, relwidth=1, relheight=1)
         if page == "jouer":
             self.afficher_page_jouer()
         elif page == "parametres":
