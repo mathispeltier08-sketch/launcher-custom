@@ -26,7 +26,7 @@ ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=ce
 
 NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
-VERSION_LAUNCHER = "1.0.11"
+VERSION_LAUNCHER = "1.0.12"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 URL_EVENEMENT_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/evenement.json"
@@ -267,7 +267,11 @@ class LauncherApp:
 
     def changer_page(self, page):
         self.page_active = page
-        for w in self.contenu.winfo_children(): w.destroy()
+        for widget in self.contenu.winfo_children():
+            if widget is not self.contenu_background:
+                widget.destroy()
+        if self.contenu_background is not None and self.contenu_background.winfo_exists():
+            self.contenu_background.lower()
         if page == "jouer":
             self.afficher_page_jouer()
         elif page == "parametres":
@@ -295,7 +299,6 @@ class LauncherApp:
             pass
 
     def afficher_page_parametres(self):
-        self.contenu_background.lift()
         panneau = tk.Frame(self.contenu, bg="#17141F")
         panneau.place(relx=.5, rely=.5, anchor="center", width=430, height=310)
         tk.Label(panneau, text="Paramètres", font=("Segoe UI", 22, "bold"),
@@ -323,7 +326,6 @@ class LauncherApp:
 
     def afficher_page_jouer(self):
         # Aucun panneau opaque : le contenu est directement posé sur le fond.
-        self.contenu_background.lift()
         ombre_titre = tk.Label(self.contenu, text="Prochain événement",
                                font=("Segoe UI", 15), bg="#17141F", fg="#17141F")
         ombre_titre.place(relx=.5, rely=.34, anchor="center", x=2, y=2)
@@ -419,7 +421,12 @@ class LauncherApp:
             else:
                 self.root.after(250,self.chargement.destroy)
         except Exception as e:
-            self.root.after(0,lambda:messagebox.showerror("Mise à jour",str(e)))
+            detail = str(e)
+            def afficher_erreur():
+                if hasattr(self, "chargement") and self.chargement.winfo_exists():
+                    self.chargement.destroy()
+                messagebox.showerror("Mise à jour", detail)
+            self.root.after(0, afficher_erreur)
 
     def telecharger_setup(self, version, url, hash_attendu):
         fd,path=tempfile.mkstemp(prefix="launcher_setup_",suffix=".exe"); os.close(fd)
