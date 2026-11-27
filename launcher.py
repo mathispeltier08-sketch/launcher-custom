@@ -26,7 +26,7 @@ NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 DOSSIER_NOM = ".manille-et-mathis"
-VERSION_LAUNCHER = "1.0.2"
+VERSION_LAUNCHER = "1.0.3"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 # --------------------------------
 
@@ -58,7 +58,7 @@ urllib.request.urlopen = _nouvelle_urlopen
 class LauncherApp:
     def __init__(self, root):
         self.root = root
-        self.root.title(f"{NOM_SERVEUR} - v{VERSION_LAUNCHER} - Édition anniversaire")
+        self.root.title(NOM_SERVEUR)
         self.root.geometry("940x580")
         self.root.minsize(780, 510)
         self.root.configure(bg="#160D22")
@@ -73,6 +73,7 @@ class LauncherApp:
         self.config = self.charger_config()
         self.image_fond_originale = None
         self.image_fond_tk = None
+        self.logo_tk = None
 
         self.canvas = tk.Canvas(root, bg="#160D22", bd=0, highlightthickness=0)
         self.canvas.pack(fill="both", expand=True)
@@ -85,51 +86,57 @@ class LauncherApp:
             except Exception as erreur:
                 print(f"Arrière-plan non chargé : {erreur}")
 
-        # Carte sombre et dorée au centre de l'image.
+        logo_path = chemin_ressource("logo.png")
+        if os.path.exists(logo_path):
+            try:
+                logo = Image.open(logo_path).convert("RGBA")
+                logo.thumbnail((190, 190), Image.Resampling.LANCZOS)
+                self.logo_tk = ImageTk.PhotoImage(logo)
+            except Exception as erreur:
+                print(f"Logo non chargé : {erreur}")
+
         self.carte = tk.Frame(
             self.canvas,
             bg="#241535",
             bd=0,
-            highlightthickness=2,
-            highlightbackground="#E4B64F",
+            highlightthickness=0,
         )
         self.carte_fenetre = self.canvas.create_window(
             470, 290, window=self.carte, width=440, height=470
         )
 
-        tk.Label(
-            self.carte,
-            text="  ✦ ÉDITION ANNIVERSAIRE ✦  ",
-            font=("Segoe UI", 9, "bold"),
-            bg="#E4B64F",
-            fg="#241535",
-            padx=10,
-            pady=5,
-        ).pack(pady=(22, 10))
+        # Ce label reste caché, mais permet aux opérations de mise à jour
+        # et de lancement de conserver leur suivi interne.
+        self.label_statut = tk.Label(self.carte, text="", bg="#241535")
 
-        tk.Label(
-            self.carte,
-            text="🎉  " + NOM_SERVEUR + "  🎂",
-            font=("Segoe UI", 23, "bold"),
-            bg="#241535",
-            fg="#FFFFFF",
-        ).pack()
+        pseudo = self.config.get("pseudo", "").strip()
+        if pseudo:
+            self.afficher_page_connectee()
+        else:
+            self.afficher_page_bienvenue()
 
-        tk.Label(
-            self.carte,
-            text="Une aventure en blocs, en fête !",
-            font=("Segoe UI", 10, "italic"),
-            bg="#241535",
-            fg="#DCCAF5",
-        ).pack(pady=(4, 20))
+        self.root.bind("<Configure>", self.redimensionner_interface)
+        self.root.after(20, self.redimensionner_interface)
+        self.creer_ecran_chargement()
+        self.root.after(300, self.demarrer_verification_mise_a_jour)
 
-        tk.Label(
-            self.carte,
-            text="PSEUDO EN JEU",
-            font=("Segoe UI", 9, "bold"),
-            bg="#241535",
-            fg="#E4B64F",
-        ).pack()
+    def vider_carte(self):
+        for widget in self.carte.winfo_children():
+            if widget is not self.label_statut:
+                widget.destroy()
+
+    def afficher_logo(self, parent, marge_haut=(35, 25)):
+        if self.logo_tk is not None:
+            tk.Label(
+                parent,
+                image=self.logo_tk,
+                bg="#241535",
+                bd=0,
+            ).pack(pady=marge_haut)
+
+    def afficher_page_bienvenue(self):
+        self.vider_carte()
+        self.afficher_logo(self.carte, (45, 35))
 
         self.entry_pseudo = tk.Entry(
             self.carte,
@@ -144,12 +151,62 @@ class LauncherApp:
             highlightbackground="#725092",
             highlightcolor="#A877D1",
         )
-        self.entry_pseudo.pack(pady=(7, 18), ipady=8)
-        self.entry_pseudo.insert(0, self.config.get("pseudo", ""))
+        self.entry_pseudo.pack(pady=(0, 18), ipady=8)
+        self.entry_pseudo.focus_set()
+        self.entry_pseudo.bind("<Return>", lambda event: self.se_connecter())
+
+        tk.Button(
+            self.carte,
+            text="Se connecter",
+            font=("Segoe UI", 11, "bold"),
+            bg="#8A4FFF",
+            fg="#FFFFFF",
+            activebackground="#A36BFF",
+            activeforeground="#FFFFFF",
+            relief="flat",
+            cursor="hand2",
+            width=22,
+            command=self.se_connecter,
+        ).pack(ipady=7)
+
+    def se_connecter(self):
+        pseudo = self.entry_pseudo.get().strip()
+        if not pseudo:
+            messagebox.showwarning("Pseudo manquant", "Veuillez entrer un pseudo.")
+            return
+        self.config["pseudo"] = pseudo
+        self.sauvegarder_config()
+        self.afficher_page_connectee()
+
+    def afficher_page_connectee(self):
+        self.vider_carte()
+        self.afficher_logo(self.carte, (28, 22))
+
+        pseudo = self.config.get("pseudo", "").strip()
+        tk.Label(
+            self.carte,
+            text=pseudo,
+            font=("Segoe UI", 15, "bold"),
+            bg="#241535",
+            fg="#FFFFFF",
+        ).pack(pady=(0, 8))
+
+        tk.Button(
+            self.carte,
+            text="Se déconnecter",
+            font=("Segoe UI", 9),
+            bg="#38234C",
+            fg="#EADDF8",
+            activebackground="#503268",
+            activeforeground="#FFFFFF",
+            relief="flat",
+            cursor="hand2",
+            command=self.se_deconnecter,
+        ).pack(pady=(0, 22), ipadx=10, ipady=4)
 
         self.btn_jouer = tk.Button(
             self.carte,
-            text="JOUER MAINTENANT",
+            text="Jouer",
             font=("Segoe UI", 13, "bold"),
             bg="#8A4FFF",
             fg="#FFFFFF",
@@ -158,47 +215,29 @@ class LauncherApp:
             disabledforeground="#C7B8DA",
             relief="flat",
             cursor="hand2",
-            width=24,
+            width=22,
             command=self.demarrer_lancement,
         )
-        self.btn_jouer.pack(ipady=9)
-
-        self.label_statut = tk.Label(
-            self.carte,
-            text="",
-            font=("Segoe UI", 9),
-            bg="#241535",
-            fg="#CDB8E8",
-        )
-        self.label_statut.pack(pady=(14, 12))
+        self.btn_jouer.pack(ipady=8)
 
         tk.Button(
             self.carte,
-            text="⚙  Paramètres",
-            font=("Segoe UI", 9),
+            text="Paramètres",
+            font=("Segoe UI", 10),
             bg="#38234C",
             fg="#EADDF8",
             activebackground="#503268",
             activeforeground="#FFFFFF",
             relief="flat",
             cursor="hand2",
-            padx=14,
-            pady=6,
+            width=22,
             command=self.ouvrir_parametres,
-        ).pack()
+        ).pack(pady=(12, 0), ipady=6)
 
-        tk.Label(
-            self.carte,
-            text=f"Launcher v{VERSION_LAUNCHER}",
-            font=("Segoe UI", 8),
-            bg="#241535",
-            fg="#927CA9",
-        ).pack(pady=(16, 0))
-
-        self.root.bind("<Configure>", self.redimensionner_interface)
-        self.root.after(20, self.redimensionner_interface)
-        self.creer_ecran_chargement()
-        self.root.after(300, self.demarrer_verification_mise_a_jour)
+    def se_deconnecter(self):
+        self.config["pseudo"] = ""
+        self.sauvegarder_config()
+        self.afficher_page_bienvenue()
 
     def redimensionner_interface(self, event=None):
         largeur = max(self.root.winfo_width(), 1)
@@ -235,13 +274,6 @@ class LauncherApp:
         self.ecran_chargement.place(x=0, y=0, relwidth=1, relheight=1)
         self.ecran_chargement.lift()
 
-        tk.Label(
-            self.ecran_chargement,
-            text="✦ ÉDITION ANNIVERSAIRE ✦",
-            font=("Segoe UI", 10, "bold"),
-            bg="#241535",
-            fg="#E4B64F",
-        ).pack(pady=(90, 18))
         tk.Label(
             self.ecran_chargement,
             text="Mise à jour du launcher",
@@ -552,13 +584,10 @@ class LauncherApp:
             os.remove(zip_temp)
 
     def demarrer_lancement(self):
-        pseudo = self.entry_pseudo.get().strip()
+        pseudo = self.config.get("pseudo", "").strip()
         if not pseudo:
-            messagebox.showwarning("Pseudo manquant", "Veuillez entrer un pseudo avant de jouer.")
+            self.afficher_page_bienvenue()
             return
-
-        self.config["pseudo"] = pseudo
-        self.sauvegarder_config()
 
         self.btn_jouer.config(state="disabled", bg="#563899")
         threading.Thread(target=self.processus_jeu, args=(pseudo,), daemon=True).start()
