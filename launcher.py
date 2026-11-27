@@ -26,7 +26,7 @@ ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=ce
 
 NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
-VERSION_LAUNCHER = "1.0.17"
+VERSION_LAUNCHER = "1.0.19"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 URL_EVENEMENT_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/evenement.json"
@@ -186,18 +186,25 @@ class LauncherApp:
         self.vider_interface()
         panneau = tk.Frame(self.interface, bg="#17141F", highlightthickness=1,
                            highlightbackground="#4B3A60")
-        panneau.place(relx=.5, rely=.5, anchor="center", width=400, height=455)
-        self.logo(panneau, (42, 38))
-        self.entree_pseudo = tk.Entry(panneau, font=("Segoe UI", 13), justify="center",
+        panneau.place(relx=.5, rely=.5, anchor="center", width=420, height=510)
+        self.logo(panneau, (24, 16))
+        tk.Label(panneau, text="Connexion à votre compte Manille et Mathis",
+                 font=("Segoe UI", 10), bg="#17141F", fg="#BCA8D0").pack(pady=(0, 14))
+        tk.Label(panneau, text="PSEUDO OU ADRESSE E-MAIL",
+                 font=("Segoe UI", 10, "bold"), bg="#17141F", fg="#FFFFFF",
+                 anchor="w").pack(fill="x", padx=54, pady=(0, 5))
+        self.entree_pseudo = tk.Entry(panneau, font=("Segoe UI", 13), justify="left",
             bg="#262130", fg="#FFFFFF", insertbackground="#FFFFFF", relief="flat",
             highlightthickness=1, highlightbackground="#554567", highlightcolor="#956ECA")
-        self.entree_pseudo.pack(ipady=10, ipadx=16, padx=54, fill="x", pady=(0, 12))
-        self.entree_mot_de_passe = tk.Entry(
-            panneau, font=("Segoe UI", 13), justify="center", show="•",
-            bg="#262130", fg="#FFFFFF", insertbackground="#FFFFFF", relief="flat",
-            highlightthickness=1, highlightbackground="#554567", highlightcolor="#956ECA"
-        )
-        self.entree_mot_de_passe.pack(ipady=10, ipadx=16, padx=54, fill="x", pady=(0, 20))
+        self.entree_pseudo.pack(ipady=10, ipadx=12, padx=54, fill="x", pady=(0, 12))
+        tk.Label(panneau, text="MOT DE PASSE",
+                 font=("Segoe UI", 10, "bold"), bg="#17141F", fg="#FFFFFF",
+                 anchor="w").pack(fill="x", padx=54, pady=(0, 5))
+        self.entree_mot_de_passe = tk.Entry(panneau, font=("Segoe UI", 13),
+            justify="left", show="•", bg="#262130", fg="#FFFFFF",
+            insertbackground="#FFFFFF", relief="flat", highlightthickness=1,
+            highlightbackground="#554567", highlightcolor="#956ECA")
+        self.entree_mot_de_passe.pack(ipady=10, ipadx=12, padx=54, fill="x", pady=(0, 20))
         self.entree_pseudo.bind("<Return>", lambda e: self.entree_mot_de_passe.focus_set())
         self.entree_mot_de_passe.bind("<Return>", lambda e: self.se_connecter())
         BoutonArrondi(panneau, "●  Se connecter", self.se_connecter, largeur=290,
@@ -577,16 +584,28 @@ class LauncherApp:
         self.root.after(0,lambda:self.label_statut.config(text=texte) if hasattr(self,"label_statut") and self.label_statut.winfo_exists() else None)
 
     def synchroniser_pack(self):
-        self.maj_statut("Téléchargement du pack…"); os.makedirs(DOSSIER_JEU,exist_ok=True)
-        temp=os.path.join(DOSSIER_JEU,"pack_temp.zip")
-        req=urllib.request.Request(URL_PACK_ZIP,headers={"User-Agent":"Launcher"})
-        ctx=ssl.create_default_context(cafile=certifi.where())
-        with urllib.request.urlopen(req,context=ctx) as r,open(temp,"wb") as out: shutil.copyfileobj(r,out)
-        for d in ["mods","config","fancymenu_data","fancymenu_setups"]:
-            cible=os.path.join(DOSSIER_JEU,d)
-            if os.path.exists(cible): shutil.rmtree(cible,ignore_errors=True)
-        with zipfile.ZipFile(temp) as z:z.extractall(DOSSIER_JEU)
+        self.maj_statut("Téléchargement du pack…")
+        os.makedirs(DOSSIER_JEU, exist_ok=True)
+        temp = os.path.join(DOSSIER_JEU, "pack_temp.zip")
+        session_auth = None
+        if os.path.exists(FICHIER_SESSION_AUTH):
+            with open(FICHIER_SESSION_AUTH, "rb") as session:
+                session_auth = session.read()
+        req = urllib.request.Request(URL_PACK_ZIP, headers={"User-Agent": "Launcher"})
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(req, context=ctx) as r, open(temp, "wb") as out:
+            shutil.copyfileobj(r, out)
+        for dossier in ["mods", "config", "fancymenu_data", "fancymenu_setups"]:
+            cible = os.path.join(DOSSIER_JEU, dossier)
+            if os.path.exists(cible):
+                shutil.rmtree(cible, ignore_errors=True)
+        with zipfile.ZipFile(temp) as archive:
+            archive.extractall(DOSSIER_JEU)
         os.remove(temp)
+        if session_auth:
+            os.makedirs(os.path.dirname(FICHIER_SESSION_AUTH), exist_ok=True)
+            with open(FICHIER_SESSION_AUTH, "wb") as session:
+                session.write(session_auth)
 
     def demarrer_lancement(self):
         pseudo=self.config.get("pseudo","").strip()
@@ -602,18 +621,9 @@ class LauncherApp:
         self.btn_jouer.configurer("Préparation…",False)
         threading.Thread(target=self.processus_jeu,args=(pseudo,),daemon=True).start()
 
-    def masquer_pendant_jeu(self):
-        self.root.withdraw()
-
     def restaurer_apres_jeu(self):
-        if not self.root.winfo_exists():
-            return
         self.root.deiconify()
         self.root.lift()
-        try:
-            self.root.focus_force()
-        except Exception:
-            pass
         if hasattr(self, "btn_jouer") and self.btn_jouer.winfo_exists():
             self.btn_jouer.configurer("▶  Jouer", True)
         self.maj_statut("Jeu fermé")
@@ -629,13 +639,10 @@ class LauncherApp:
             self.synchroniser_pack(); self.maj_statut("Lancement du jeu…")
             opts={"username":pseudo,"uuid":"","token":"","jvmArguments":[f'-Xmx{self.config.get("ram",4)}G','-Xms2G']}
             cmd = minecraft_launcher_lib.command.get_minecraft_command(version, DOSSIER_JEU, opts)
-            processus = subprocess.Popen(
-                cmd,
-                cwd=DOSSIER_JEU,
+            processus = subprocess.Popen(cmd, cwd=DOSSIER_JEU,
                 stdout=None if self.config.get("logs") else subprocess.DEVNULL,
-                stderr=None if self.config.get("logs") else subprocess.DEVNULL,
-            )
-            self.root.after(0, self.masquer_pendant_jeu)
+                stderr=None if self.config.get("logs") else subprocess.DEVNULL)
+            self.root.after(0, self.root.withdraw)
             processus.wait()
             self.root.after(0, self.restaurer_apres_jeu)
         except Exception as e:
