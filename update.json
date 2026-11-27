@@ -3,15 +3,15 @@
   "downloads": {
     "windows": {
       "url": "https://github.com/mathispeltier08-sketch/launcher-custom/releases/download/auto-build/Manille-et-Mathis-Launcher-Setup.exe",
-      "sha256": "sha256:95aecc28f143331b28935cb86ffb78e395e4417c562add0851dfc84d1dcc8ad0"
+      "sha256": "sha256:911d78ddda8aad83d620435efbd99419ebdfff476e5ea024b5bd2fc8118527e8"
     },
     "linux": {
       "url": "https://github.com/mathispeltier08-sketch/launcher-custom/releases/download/auto-build/Manille-et-Mathis-Launcher-Linux-x86_64.AppImage",
-      "sha256": "sha256:c890cfe6f7ab7725afc75e32c0058965ae72fb42aaeb381cd52f9fe34ec96f40"
+      "sha256": "sha256:c38e5c1f28ed7c104f4bb5fe6e7b3a4240805242d41289cb3ac39732eb26a06b"
     },
     "macos_intel": {
       "url": "https://github.com/mathispeltier08-sketch/launcher-custom/releases/download/auto-build/Manille-et-Mathis-Launcher-macOS-Intel.zip",
-      "sha256": "sha256:7620df188b336353124b4aeb46f0cf7ca9d6c7cb0811294f2de24252c0a9a0b6"
+      "sha256": "sha256:3a6f3e2b76d9d9f886e3d834ac57c12d02f43e33a95fce6a5b0508ae6f8711c8"
     }
   }
 }
