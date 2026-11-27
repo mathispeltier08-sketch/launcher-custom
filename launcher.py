@@ -4,6 +4,8 @@ import json
 import ssl
 import shutil
 import zipfile
+import tarfile
+import shlex
 import urllib.request
 import urllib.parse
 import webbrowser
@@ -579,49 +581,135 @@ class LauncherApp:
     def demarrer_verification_mise_a_jour(self):
         threading.Thread(target=self.verifier_mise_a_jour, daemon=True).start()
 
+    @staticmethod
+    def cle_plateforme_mise_a_jour():
+        if sys.platform == "win32":
+            return "windows"
+        if sys.platform.startswith("linux"):
+            return "linux"
+        if sys.platform == "darwin":
+            return "macos_intel"
+        raise RuntimeError(f"Système non pris en charge : {sys.platform}")
+
     def verifier_mise_a_jour(self):
         try:
             self.maj_ecran_update("Vérification des mises à jour…", 10)
-            req=urllib.request.Request(URL_UPDATE_JSON,headers={"User-Agent":"Launcher"})
-            ctx=ssl.create_default_context(cafile=certifi.where())
-            with urllib.request.urlopen(req,context=ctx,timeout=15) as r:
-                d=json.loads(r.read().decode("utf-8"))
-            if self.comparer_versions(VERSION_LAUNCHER,d["version"])<0:
-                self.telecharger_setup(d["version"],d["download_url"],d.get("sha256",""))
+            req = urllib.request.Request(URL_UPDATE_JSON, headers={"User-Agent": "Launcher"})
+            ctx = ssl.create_default_context(cafile=certifi.where())
+            with urllib.request.urlopen(req, context=ctx, timeout=15) as reponse:
+                donnees = json.loads(reponse.read().decode("utf-8"))
+            version_distante = donnees["version"]
+            if self.comparer_versions(VERSION_LAUNCHER, version_distante) < 0:
+                cle = self.cle_plateforme_mise_a_jour()
+                fichier = donnees.get("downloads", {}).get(cle)
+                if not fichier:
+                    raise RuntimeError(f"Aucun téléchargement défini pour {cle}.")
+                self.telecharger_mise_a_jour(
+                    version_distante,
+                    fichier["url"],
+                    fichier.get("sha256", ""),
+                    cle,
+                )
             else:
-                self.root.after(250,self.chargement.destroy)
-        except Exception as e:
-            detail = str(e)
+                self.root.after(250, self.chargement.destroy)
+        except Exception as erreur:
+            detail = str(erreur)
             def afficher_erreur():
                 if hasattr(self, "chargement") and self.chargement.winfo_exists():
                     self.chargement.destroy()
                 messagebox.showerror("Mise à jour", detail)
             self.root.after(0, afficher_erreur)
 
-    def telecharger_setup(self, version, url, hash_attendu):
-        fd,path=tempfile.mkstemp(prefix="launcher_setup_",suffix=".exe"); os.close(fd)
-        req=urllib.request.Request(url,headers={"User-Agent":"Launcher"})
-        ctx=ssl.create_default_context(cafile=certifi.where())
-        with urllib.request.urlopen(req,context=ctx,timeout=120) as r,open(path,"wb") as out:
-            total=int(r.headers.get("Content-Length",0) or 0); recu=0
+    def telecharger_mise_a_jour(self, version, url, hash_attendu, plateforme):
+        suffixes = {"windows": ".exe", "linux": ".tar.gz", "macos_intel": ".zip"}
+        fd, chemin = tempfile.mkstemp(prefix="launcher_update_", suffix=suffixes[plateforme])
+        os.close(fd)
+        requete = urllib.request.Request(url, headers={"User-Agent": "Manille-et-Mathis-Launcher"})
+        contexte = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(requete, context=contexte, timeout=180) as reponse, open(chemin, "wb") as sortie:
+            total = int(reponse.headers.get("Content-Length", 0) or 0)
+            recu = 0
             while True:
-                bloc=r.read(262144)
-                if not bloc: break
-                out.write(bloc); recu+=len(bloc)
-                self.maj_ecran_update(f"Téléchargement {version}…",10+(70*recu/total if total else 40))
-        if hash_attendu and self.sha256(path)!=hash_attendu.lower(): raise RuntimeError("SHA-256 incorrect")
-        self.lancer_setup(path)
+                bloc = reponse.read(262144)
+                if not bloc:
+                    break
+                sortie.write(bloc)
+                recu += len(bloc)
+                progression = 10 + (70 * recu / total if total else 40)
+                self.maj_ecran_update(f"Téléchargement {version}…", progression)
+        hash_attendu = str(hash_attendu).lower().removeprefix("sha256:")
+        if hash_attendu and self.sha256(chemin) != hash_attendu:
+            os.remove(chemin)
+            raise RuntimeError("SHA-256 incorrect")
+        self.installer_mise_a_jour(chemin, plateforme)
 
-    def lancer_setup(self, setup):
-        if sys.platform!="win32": raise RuntimeError("Mise à jour automatique disponible sous Windows")
-        exe=os.path.join(os.environ.get("LOCALAPPDATA",""),"Programs","ManilleEtMathisLauncher","launcher.exe")
-        script=os.path.join(tempfile.gettempdir(),"maj_launcher.cmd")
-        with open(script,"w",encoding="utf-8") as f:
-            f.write("@echo off\r\ntimeout /t 2 /nobreak >nul\r\n")
-            f.write(f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /SP-\r\n')
-            f.write(f'timeout /t 1 /nobreak >nul\r\nstart "" "{exe}"\r\ndel /q "{setup}"\r\ndel /q "%~f0"\r\n')
-        subprocess.Popen(["cmd","/c",script],creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
-        self.root.after(250,self.root.destroy)
+    def installer_mise_a_jour(self, archive, plateforme):
+        if plateforme == "windows":
+            self.installer_mise_a_jour_windows(archive)
+        elif plateforme == "linux":
+            self.installer_mise_a_jour_linux(archive)
+        elif plateforme == "macos_intel":
+            self.installer_mise_a_jour_macos(archive)
+
+    def installer_mise_a_jour_windows(self, setup):
+        exe = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "ManilleEtMathisLauncher", "launcher.exe")
+        script = os.path.join(tempfile.gettempdir(), "maj_launcher.cmd")
+        with open(script, "w", encoding="utf-8") as fichier:
+            fichier.write("@echo off\r\ntimeout /t 2 /nobreak >nul\r\n")
+            fichier.write(f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /SP-\r\n')
+            fichier.write(f'timeout /t 1 /nobreak >nul\r\nstart "" "{exe}"\r\ndel /q "{setup}"\r\ndel /q "%~f0"\r\n')
+        subprocess.Popen(["cmd", "/c", script], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self.root.after(250, self.root.destroy)
+
+    def installer_mise_a_jour_linux(self, archive):
+        if not getattr(sys, "frozen", False):
+            raise RuntimeError("La mise à jour Linux nécessite la version compilée du launcher.")
+        dossier = tempfile.mkdtemp(prefix="launcher_linux_update_")
+        with tarfile.open(archive, "r:gz") as paquet:
+            paquet.extractall(dossier, filter="data")
+        candidats = [p for p in Path(dossier).rglob("*") if p.is_file()]
+        if not candidats:
+            raise RuntimeError("Binaire Linux absent de l’archive.")
+        nouveau = candidats[0]
+        cible = Path(sys.executable).resolve()
+        script = Path(tempfile.gettempdir()) / "maj_launcher_linux.sh"
+        script.write_text(
+            "#!/bin/sh\nsleep 2\n"
+            f"cp {shlex.quote(str(nouveau))} {shlex.quote(str(cible))}\n"
+            f"chmod +x {shlex.quote(str(cible))}\n"
+            f"rm -rf {shlex.quote(dossier)} {shlex.quote(archive)}\n"
+            f"nohup {shlex.quote(str(cible))} >/dev/null 2>&1 &\n"
+            f"rm -- {shlex.quote(str(script))}\n",
+            encoding="utf-8",
+        )
+        script.chmod(0o700)
+        subprocess.Popen(["/bin/sh", str(script)], start_new_session=True)
+        self.root.after(250, self.root.destroy)
+
+    def installer_mise_a_jour_macos(self, archive):
+        if not getattr(sys, "frozen", False):
+            raise RuntimeError("La mise à jour macOS nécessite l’application compilée.")
+        dossier = tempfile.mkdtemp(prefix="launcher_macos_update_")
+        with zipfile.ZipFile(archive) as paquet:
+            paquet.extractall(dossier)
+        applications = list(Path(dossier).rglob("*.app"))
+        if not applications:
+            raise RuntimeError("Application macOS absente de l’archive.")
+        nouvelle_app = applications[0]
+        app_actuelle = Path(sys.executable).resolve().parents[2]
+        script = Path(tempfile.gettempdir()) / "maj_launcher_macos.sh"
+        script.write_text(
+            "#!/bin/sh\nsleep 2\n"
+            f"rm -rf {shlex.quote(str(app_actuelle))}\n"
+            f"mv {shlex.quote(str(nouvelle_app))} {shlex.quote(str(app_actuelle))}\n"
+            f"rm -rf {shlex.quote(dossier)} {shlex.quote(archive)}\n"
+            f"open {shlex.quote(str(app_actuelle))}\n"
+            f"rm -- {shlex.quote(str(script))}\n",
+            encoding="utf-8",
+        )
+        script.chmod(0o700)
+        subprocess.Popen(["/bin/sh", str(script)], start_new_session=True)
+        self.root.after(250, self.root.destroy)
 
     def charger_config(self):
         try:
