@@ -14,7 +14,7 @@ import tempfile
 import hashlib
 from datetime import datetime, timezone
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, simpledialog
 
 import certifi
 import minecraft_launcher_lib
@@ -26,11 +26,12 @@ ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=ce
 
 NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
-VERSION_LAUNCHER = "1.0.12"
+VERSION_LAUNCHER = "1.0.15"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 URL_EVENEMENT_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/evenement.json"
 URL_INSCRIPTION = "https://manille.djmathis.fr/user/register"
+URL_AZURIOM_AUTH = "https://manille.djmathis.fr/api/auth/authenticate"
 DOSSIER_NOM = ".manille-et-mathis"
 
 
@@ -46,6 +47,7 @@ def obtenir_dossier_jeu():
 
 DOSSIER_JEU = obtenir_dossier_jeu()
 FICHIER_CONFIG = os.path.join(DOSSIER_JEU, "launcher_config.json")
+FICHIER_SESSION_AUTH = os.path.join(DOSSIER_JEU, "config", "manilleauth-session.json")
 
 
 class BoutonArrondi(tk.Canvas):
@@ -184,26 +186,104 @@ class LauncherApp:
         self.vider_interface()
         panneau = tk.Frame(self.interface, bg="#17141F", highlightthickness=1,
                            highlightbackground="#4B3A60")
-        panneau.place(relx=.5, rely=.5, anchor="center", width=400, height=390)
+        panneau.place(relx=.5, rely=.5, anchor="center", width=400, height=455)
         self.logo(panneau, (42, 38))
         self.entree_pseudo = tk.Entry(panneau, font=("Segoe UI", 13), justify="center",
             bg="#262130", fg="#FFFFFF", insertbackground="#FFFFFF", relief="flat",
             highlightthickness=1, highlightbackground="#554567", highlightcolor="#956ECA")
-        self.entree_pseudo.pack(ipady=10, ipadx=16, padx=54, fill="x", pady=(0, 20))
-        self.entree_pseudo.bind("<Return>", lambda e: self.se_connecter())
+        self.entree_pseudo.pack(ipady=10, ipadx=16, padx=54, fill="x", pady=(0, 12))
+        self.entree_mot_de_passe = tk.Entry(
+            panneau, font=("Segoe UI", 13), justify="center", show="•",
+            bg="#262130", fg="#FFFFFF", insertbackground="#FFFFFF", relief="flat",
+            highlightthickness=1, highlightbackground="#554567", highlightcolor="#956ECA"
+        )
+        self.entree_mot_de_passe.pack(ipady=10, ipadx=16, padx=54, fill="x", pady=(0, 20))
+        self.entree_pseudo.bind("<Return>", lambda e: self.entree_mot_de_passe.focus_set())
+        self.entree_mot_de_passe.bind("<Return>", lambda e: self.se_connecter())
         BoutonArrondi(panneau, "●  Se connecter", self.se_connecter, largeur=290,
                       couleur="#8253C7", survol="#9766DD").pack(pady=(0, 10))
         BoutonArrondi(panneau, "＋  Inscription", lambda: webbrowser.open(URL_INSCRIPTION),
                       largeur=290, couleur="#2B2536", survol="#443456").pack()
 
     def se_connecter(self):
-        pseudo = self.entree_pseudo.get().strip()
-        if not pseudo:
-            messagebox.showwarning("Pseudo manquant", "Veuillez entrer un pseudo.")
+        identifiant = self.entree_pseudo.get().strip()
+        mot_de_passe = self.entree_mot_de_passe.get()
+        if not identifiant or not mot_de_passe:
+            messagebox.showwarning("Connexion", "Entrez votre pseudo ou email et votre mot de passe.")
             return
-        self.config["pseudo"] = pseudo
-        self.sauvegarder_config()
-        self.afficher_interface_connectee()
+        threading.Thread(
+            target=self.authentifier_azuriom,
+            args=(identifiant, mot_de_passe, None),
+            daemon=True,
+        ).start()
+
+    def authentifier_azuriom(self, identifiant, mot_de_passe, code_2fa=None):
+        try:
+            donnees = {"email": identifiant, "password": mot_de_passe}
+            if code_2fa:
+                donnees["code"] = code_2fa
+            corps = json.dumps(donnees).encode("utf-8")
+            requete = urllib.request.Request(
+                URL_AZURIOM_AUTH,
+                data=corps,
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "User-Agent": "Manille-et-Mathis-Launcher",
+                },
+                method="POST",
+            )
+            contexte = ssl.create_default_context(cafile=certifi.where())
+            try:
+                with urllib.request.urlopen(requete, context=contexte, timeout=15) as reponse:
+                    resultat = json.loads(reponse.read().decode("utf-8"))
+            except urllib.error.HTTPError as erreur:
+                contenu = erreur.read().decode("utf-8", errors="replace")
+                try:
+                    resultat = json.loads(contenu)
+                except Exception:
+                    resultat = {"status": "error", "message": "Connexion refusée."}
+
+            if resultat.get("status") == "pending" and (
+                resultat.get("reason") == "2fa" or resultat.get("requires2fa")
+            ):
+                self.root.after(0, lambda: self.demander_code_2fa(identifiant, mot_de_passe))
+                return
+
+            pseudo = str(resultat.get("username", "")).strip()
+            if not pseudo or resultat.get("status") == "error":
+                message = resultat.get("message", "Pseudo ou mot de passe incorrect.")
+                raise RuntimeError(message)
+
+            # Le mot de passe n'est jamais enregistré. La réponse AzAuth est déposée
+            # temporairement pour le mod client, qui la charge puis supprime le fichier.
+            os.makedirs(os.path.dirname(FICHIER_SESSION_AUTH), exist_ok=True)
+            with open(FICHIER_SESSION_AUTH, "w", encoding="utf-8") as session:
+                json.dump(resultat, session, ensure_ascii=False)
+            try:
+                os.chmod(FICHIER_SESSION_AUTH, 0o600)
+            except OSError:
+                pass
+
+            self.config["pseudo"] = pseudo
+            self.sauvegarder_config()
+            self.root.after(0, self.afficher_interface_connectee)
+        except Exception as erreur:
+            detail = str(erreur)
+            self.root.after(0, lambda: messagebox.showerror("Connexion impossible", detail))
+
+    def demander_code_2fa(self, identifiant, mot_de_passe):
+        code = simpledialog.askstring(
+            "Double authentification",
+            "Entrez le code de double authentification :",
+            parent=self.root,
+        )
+        if code:
+            threading.Thread(
+                target=self.authentifier_azuriom,
+                args=(identifiant, mot_de_passe, code.strip()),
+                daemon=True,
+            ).start()
 
     def afficher_interface_connectee(self):
         self.vider_interface()
@@ -323,20 +403,36 @@ class LauncherApp:
                       couleur="#8253C7", survol="#9766DD").pack(pady=14)
 
     def afficher_page_jouer(self):
-        # Aucun panneau opaque : le contenu est directement posé sur le fond.
-        ombre_titre = tk.Label(self.contenu, text="Prochain événement",
-                               font=("Segoe UI", 15), bg="#17141F", fg="#17141F")
-        ombre_titre.place(relx=.5, rely=.34, anchor="center", x=2, y=2)
-        tk.Label(self.contenu, text="Prochain événement", font=("Segoe UI", 15),
-                 bg="#17141F", fg="#E0CFF4").place(relx=.5, rely=.34, anchor="center")
-
-        self.label_decompte = tk.Label(self.contenu, text="Chargement…",
-            font=("Segoe UI", 34, "bold"), bg="#17141F", fg="#FFFFFF")
-        self.label_decompte.place(relx=.5, rely=.5, anchor="center")
-        self.label_date = tk.Label(self.contenu, text="", font=("Segoe UI", 11),
-                                   bg="#17141F", fg="#D0B9E6")
-        self.label_date.place(relx=.5, rely=.64, anchor="center")
+        # Canvas utilisé pour obtenir du texte sans aucun fond opaque.
+        self.canvas_evenement = tk.Canvas(
+            self.contenu, bg="#111019", highlightthickness=0, bd=0
+        )
+        self.canvas_evenement.place(x=0, y=0, relwidth=1, relheight=1)
+        self.image_evenement_id = self.canvas_evenement.create_image(
+            0, 0, anchor="nw", image=self.fond_tk
+        )
+        self.titre_evenement_id = self.canvas_evenement.create_text(
+            0, 0, text="Prochain événement", fill="#E0CFF4",
+            font=("Segoe UI", 15)
+        )
+        self.decompte_evenement_id = self.canvas_evenement.create_text(
+            0, 0, text="Chargement…", fill="#FFFFFF",
+            font=("Segoe UI", 34, "bold")
+        )
+        self.date_evenement_id = self.canvas_evenement.create_text(
+            0, 0, text="", fill="#D0B9E6", font=("Segoe UI", 11)
+        )
+        self.canvas_evenement.bind("<Configure>", self.positionner_evenement)
         threading.Thread(target=self.charger_evenement, daemon=True).start()
+
+    def positionner_evenement(self, event=None):
+        if not hasattr(self, "canvas_evenement") or not self.canvas_evenement.winfo_exists():
+            return
+        largeur = max(1, self.canvas_evenement.winfo_width())
+        hauteur = max(1, self.canvas_evenement.winfo_height())
+        self.canvas_evenement.coords(self.titre_evenement_id, largeur / 2, hauteur * 0.34)
+        self.canvas_evenement.coords(self.decompte_evenement_id, largeur / 2, hauteur * 0.50)
+        self.canvas_evenement.coords(self.date_evenement_id, largeur / 2, hauteur * 0.64)
 
     def charger_evenement(self):
         try:
@@ -348,13 +444,19 @@ class LauncherApp:
             if cible.tzinfo is None: cible = cible.replace(tzinfo=timezone.utc)
             self.cible_evenement = cible
             texte = str(data.get("texte", ""))
-            self.root.after(0, lambda: self.label_date.config(text=texte))
+            self.root.after(0, lambda: self.canvas_evenement.itemconfig(
+                self.date_evenement_id, text=texte
+            ) if self.canvas_evenement.winfo_exists() else None)
             self.root.after(0, self.actualiser_decompte)
         except Exception:
-            self.root.after(0, lambda: self.label_decompte.config(text="Date indisponible"))
+            self.root.after(0, lambda: self.canvas_evenement.itemconfig(
+                self.decompte_evenement_id, text="Date indisponible"
+            ) if self.canvas_evenement.winfo_exists() else None)
 
     def actualiser_decompte(self):
-        if not self.cible_evenement or not self.label_decompte.winfo_exists(): return
+        if (not self.cible_evenement or not hasattr(self, "canvas_evenement")
+                or not self.canvas_evenement.winfo_exists()):
+            return
         reste = self.cible_evenement - datetime.now(timezone.utc)
         secondes = max(0, int(reste.total_seconds()))
         if secondes == 0:
@@ -364,7 +466,7 @@ class LauncherApp:
             heures, secondes = divmod(secondes, 3600)
             minutes, secondes = divmod(secondes, 60)
             texte = f"{jours:02d}j  {heures:02d}h  {minutes:02d}m  {secondes:02d}s"
-        self.label_decompte.config(text=texte)
+        self.canvas_evenement.itemconfig(self.decompte_evenement_id, text=texte)
         self.apres_decompte = self.root.after(1000, self.actualiser_decompte)
 
     def se_deconnecter(self):
@@ -488,7 +590,15 @@ class LauncherApp:
 
     def demarrer_lancement(self):
         pseudo=self.config.get("pseudo","").strip()
-        if not pseudo:return
+        if not pseudo:
+            return
+        if not os.path.exists(FICHIER_SESSION_AUTH):
+            messagebox.showwarning(
+                "Authentification requise",
+                "Reconnectez-vous au launcher avant de démarrer le jeu."
+            )
+            self.se_deconnecter()
+            return
         self.btn_jouer.configurer("Préparation…",False)
         threading.Thread(target=self.processus_jeu,args=(pseudo,),daemon=True).start()
 

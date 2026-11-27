@@ -1,220 +1,36 @@
-name: Compiler le launcher multi-OS
-
+name: Build launcher
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
-    tags:
-      - "v*"
-
+    branches: [main]
+  workflow_dispatch:
 permissions:
   contents: write
-
 jobs:
-  build:
-    name: Build ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            name: Windows
-          - os: macos-latest
-            name: macOS
-          - os: ubuntu-latest
-            name: Linux
-
+  windows:
+    runs-on: windows-latest
     steps:
-      - name: Récupérer le dépôt
-        uses: actions/checkout@v4
-
-      - name: Installer Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          architecture: "x64"
-
-      - name: Vérifier les fichiers visuels
-        shell: bash
-        run: |
-          test -f launcher.py || (echo "launcher.py manquant" && exit 1)
-          test -f fond_anniversaire.png || (echo "fond_anniversaire.png manquant" && exit 1)
-          test -f logo.png || (echo "logo.png manquant" && exit 1)
-          test -f icone.ico || (echo "icone.ico manquant" && exit 1)
-
-      - name: Installer les dépendances Python
-        shell: bash
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install pyinstaller pillow certifi minecraft-launcher-lib
-
-      - name: Installer les dépendances Linux
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-tk
-
-      - name: Compiler sous Windows
-        if: runner.os == 'Windows'
+          python-version: '3.11'
+      - name: Installer les dépendances
+        run: pip install pyinstaller pillow certifi minecraft-launcher-lib
+      - name: Compiler
         shell: powershell
         run: |
-          pyinstaller `
-            --noconfirm `
-            --clean `
-            --onedir `
-            --windowed `
-            --noupx `
-            --name launcher `
-            --icon "icone.ico" `
-            --add-data "fond_anniversaire.png;." `
-            --add-data "logo.png;." `
-            --collect-all certifi `
-            --collect-all minecraft_launcher_lib `
-            launcher.py
-
-          if (!(Test-Path "dist/launcher/launcher.exe")) {
-            throw "Le fichier dist/launcher/launcher.exe est introuvable."
-          }
-
-      - name: Compiler sous macOS ou Linux
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          pyinstaller \
-            --noconfirm \
-            --clean \
-            --onedir \
-            --windowed \
-            --noupx \
-            --name launcher \
-            --add-data "fond_anniversaire.png:." \
-            --add-data "logo.png:." \
-            --collect-all certifi \
-            --collect-all minecraft_launcher_lib \
-            launcher.py
-
-      - name: Compiler le setup Windows
-        if: runner.os == 'Windows'
-        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
-        with:
-          path: setup.iss
-          options: /O+
-
-      - name: Vérifier et hacher le setup Windows
-        if: runner.os == 'Windows'
+          pyinstaller --noconfirm --clean --onedir --windowed --noupx --name launcher --icon "icone.ico" --add-data "fond_anniversaire.png;." --add-data "logo.png;." --collect-all certifi --collect-all minecraft_launcher_lib launcher.py
+      - name: Installer Inno Setup
         shell: powershell
-        run: |
-          $setup = "installer/Manille-et-Mathis-Launcher-Setup.exe"
-          if (!(Test-Path $setup)) {
-            throw "Le setup Windows est introuvable : $setup"
-          }
-
-          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
-          $hash | Out-File -Encoding ascii "installer/Manille-et-Mathis-Launcher-Setup.exe.sha256"
-          Write-Host "SHA256 Windows : $hash"
-
-      - name: Préparer l'application macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          if [ ! -d "dist/launcher.app" ]; then
-            echo "dist/launcher.app est introuvable"
-            exit 1
-          fi
-
-          ditto -c -k --sequesterRsrc --keepParent \
-            "dist/launcher.app" \
-            "Manille-et-Mathis-Launcher-macOS.zip"
-
-          shasum -a 256 "Manille-et-Mathis-Launcher-macOS.zip" \
-            | awk '{print $1}' \
-            > "Manille-et-Mathis-Launcher-macOS.zip.sha256"
-
-      - name: Préparer l'application Linux
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          if [ ! -f "dist/launcher/launcher" ]; then
-            echo "dist/launcher/launcher est introuvable"
-            exit 1
-          fi
-
-          chmod +x "dist/launcher/launcher"
-          tar -czf "Manille-et-Mathis-Launcher-Linux.tar.gz" -C dist launcher
-
-          sha256sum "Manille-et-Mathis-Launcher-Linux.tar.gz" \
-            | awk '{print $1}' \
-            > "Manille-et-Mathis-Launcher-Linux.tar.gz.sha256"
-
-      - name: Publier l'artefact Windows
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Manille-et-Mathis-Launcher-Windows
-          path: |
-            installer/Manille-et-Mathis-Launcher-Setup.exe
-            installer/Manille-et-Mathis-Launcher-Setup.exe.sha256
-          if-no-files-found: error
-          compression-level: 0
-
-      - name: Publier l'artefact macOS
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Manille-et-Mathis-Launcher-macOS
-          path: |
-            Manille-et-Mathis-Launcher-macOS.zip
-            Manille-et-Mathis-Launcher-macOS.zip.sha256
-          if-no-files-found: error
-          compression-level: 0
-
-      - name: Publier l'artefact Linux
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Manille-et-Mathis-Launcher-Linux
-          path: |
-            Manille-et-Mathis-Launcher-Linux.tar.gz
-            Manille-et-Mathis-Launcher-Linux.tar.gz.sha256
-          if-no-files-found: error
-          compression-level: 0
-
-      - name: Publier Windows après commit sur main
-        if: runner.os == 'Windows' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v3
+        run: choco install innosetup -y
+      - name: Créer le setup
+        shell: powershell
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss'
+      - name: Publier
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: auto-build
           name: Build automatique
           prerelease: true
           make_latest: false
-          files: |
-            installer/Manille-et-Mathis-Launcher-Setup.exe
-            installer/Manille-et-Mathis-Launcher-Setup.exe.sha256
-
-      - name: Publier macOS après commit sur main
-        if: runner.os == 'macOS' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: auto-build
-          name: Build automatique
-          prerelease: true
-          make_latest: false
-          files: |
-            Manille-et-Mathis-Launcher-macOS.zip
-            Manille-et-Mathis-Launcher-macOS.zip.sha256
-
-      - name: Publier Linux après commit sur main
-        if: runner.os == 'Linux' && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: auto-build
-          name: Build automatique
-          prerelease: true
-          make_latest: false
-          files: |
-            Manille-et-Mathis-Launcher-Linux.tar.gz
-            Manille-et-Mathis-Launcher-Linux.tar.gz.sha256
+          overwrite_files: true
+          files: installer/Manille-et-Mathis-Launcher-Setup.exe

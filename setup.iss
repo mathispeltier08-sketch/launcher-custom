@@ -1,5 +1,5 @@
 #define MyAppName "Manille et Mathis Launcher"
-#define MyAppVersion "1.0.12"
+#define MyAppVersion "1.0.15"
 #define MyAppPublisher "Mathis Peltier"
 #define MyAppExeName "launcher.exe"
 
