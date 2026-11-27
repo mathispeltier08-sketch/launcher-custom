@@ -65,7 +65,7 @@ jobs:
             --add-data "fond_anniversaire.png;." `
             --collect-all certifi `
             --collect-all minecraft_launcher_lib `
-            launcher_anniversaire_auto_update.py
+            launcher.py
 
           if (!(Test-Path "dist/launcher/launcher.exe")) {
             throw "Le fichier dist/launcher/launcher.exe est introuvable."
