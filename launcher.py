@@ -26,7 +26,7 @@ ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=ce
 
 NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
-VERSION_LAUNCHER = "1.0.10"
+VERSION_LAUNCHER = "1.0.11"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 URL_EVENEMENT_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/evenement.json"
@@ -114,6 +114,7 @@ class LauncherApp:
         self.avatar_tk = None
         self.bg_interface_label = None
         self.zone_background = None
+        self.contenu_background = None
         self.page_active = "jouer"
         self.cible_evenement = None
         self.apres_decompte = None
@@ -164,6 +165,8 @@ class LauncherApp:
                 self.bg_interface_label.config(image=self.fond_tk)
             if self.zone_background is not None and self.zone_background.winfo_exists():
                 self.zone_background.config(image=self.fond_tk)
+            if self.contenu_background is not None and self.contenu_background.winfo_exists():
+                self.contenu_background.config(image=self.fond_tk)
 
     def vider_interface(self):
         if self.apres_decompte:
@@ -237,6 +240,9 @@ class LauncherApp:
         self.zone_background.place(x=0, y=0, relwidth=1, relheight=1)
         self.contenu = tk.Frame(self.zone_droite, bg="#111019", highlightthickness=0)
         self.contenu.pack(fill="both", expand=True, padx=52, pady=(52, 126))
+        self.contenu_background = tk.Label(self.contenu, image=self.fond_tk,
+                                           bg="#111019", bd=0)
+        self.contenu_background.place(x=0, y=0, relwidth=1, relheight=1)
 
         self.footer = tk.Frame(self.zone_droite, bg="#17141F", height=88)
         self.footer.pack(fill="x", side="bottom")
@@ -289,8 +295,9 @@ class LauncherApp:
             pass
 
     def afficher_page_parametres(self):
+        self.contenu_background.lift()
         panneau = tk.Frame(self.contenu, bg="#17141F")
-        panneau.place(x=0, y=0, relwidth=1, relheight=1)
+        panneau.place(relx=.5, rely=.5, anchor="center", width=430, height=310)
         tk.Label(panneau, text="Paramètres", font=("Segoe UI", 22, "bold"),
                  bg="#17141F", fg="#FFFFFF").pack(pady=(18, 18))
         ram = tk.IntVar(value=self.config.get("ram", 4))
@@ -315,17 +322,20 @@ class LauncherApp:
                       couleur="#8253C7", survol="#9766DD").pack(pady=14)
 
     def afficher_page_jouer(self):
-        centre = tk.Frame(self.contenu, bg="#17141F", highlightthickness=1,
-                          highlightbackground="#4B3A60")
-        centre.place(x=0, y=0, relwidth=1, relheight=1)
-        tk.Label(centre, text="Prochain événement", font=("Segoe UI", 15),
-                 bg="#17141F", fg="#BCA8D0").pack(pady=(0, 16))
-        self.label_decompte = tk.Label(centre, text="Chargement…",
+        # Aucun panneau opaque : le contenu est directement posé sur le fond.
+        self.contenu_background.lift()
+        ombre_titre = tk.Label(self.contenu, text="Prochain événement",
+                               font=("Segoe UI", 15), bg="#17141F", fg="#17141F")
+        ombre_titre.place(relx=.5, rely=.34, anchor="center", x=2, y=2)
+        tk.Label(self.contenu, text="Prochain événement", font=("Segoe UI", 15),
+                 bg="#17141F", fg="#E0CFF4").place(relx=.5, rely=.34, anchor="center")
+
+        self.label_decompte = tk.Label(self.contenu, text="Chargement…",
             font=("Segoe UI", 34, "bold"), bg="#17141F", fg="#FFFFFF")
-        self.label_decompte.pack()
-        self.label_date = tk.Label(centre, text="", font=("Segoe UI", 11),
-                                   bg="#17141F", fg="#8F819E")
-        self.label_date.pack(pady=(12, 0))
+        self.label_decompte.place(relx=.5, rely=.5, anchor="center")
+        self.label_date = tk.Label(self.contenu, text="", font=("Segoe UI", 11),
+                                   bg="#17141F", fg="#D0B9E6")
+        self.label_date.place(relx=.5, rely=.64, anchor="center")
         threading.Thread(target=self.charger_evenement, daemon=True).start()
 
     def charger_evenement(self):
