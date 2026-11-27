@@ -1,5 +1,5 @@
 #define MyAppName "Manille et Mathis Launcher"
-#define MyAppVersion "1.0.4"
+#define MyAppVersion "1.0.5"
 #define MyAppPublisher "Mathis Peltier"
 #define MyAppExeName "launcher.exe"
 
@@ -36,4 +36,3 @@ Name: "desktopicon"; Description: "Créer un raccourci sur le Bureau"; GroupDesc
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Lancer {#MyAppName}"; Flags: nowait postinstall skipifsilent
-Filename: "{app}\{#MyAppExeName}"; Flags: nowait runhidden; Check: WizardSilent

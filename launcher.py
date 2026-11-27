@@ -26,7 +26,7 @@ NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 DOSSIER_NOM = ".manille-et-mathis"
-VERSION_LAUNCHER = "1.0.4"
+VERSION_LAUNCHER = "1.0.5"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 # --------------------------------
 
@@ -445,19 +445,39 @@ class LauncherApp:
         if sys.platform != "win32":
             raise RuntimeError("La mise à jour automatique nécessite Windows.")
 
-        # /RESTARTAPPLICATIONS demande au setup de relancer le launcher inscrit dans [Run].
-        commande = [
-            setup,
-            "/VERYSILENT",
-            "/SUPPRESSMSGBOXES",
-            "/NORESTART",
-            "/CLOSEAPPLICATIONS",
-            "/RESTARTAPPLICATIONS",
-            "/SP-",
-        ]
-        subprocess.Popen(commande, close_fds=True)
-        self.maj_ecran_update("Redémarrage du launcher…", 100)
-        self.root.after(800, self.root.destroy)
+        # Le script attend que le launcher soit fermé avant d'installer.
+        # Cela évite que le setup tente d'écraser des DLL encore utilisées.
+        dossier_installation = os.path.join(
+            os.environ.get("LOCALAPPDATA", ""),
+            "Programs",
+            "ManilleEtMathisLauncher",
+        )
+        executable_installe = os.path.join(dossier_installation, "launcher.exe")
+        script = os.path.join(tempfile.gettempdir(), "maj_manille_mathis.cmd")
+
+        contenu = (
+            "@echo off\r\n"
+            "chcp 65001 >nul\r\n"
+            "timeout /t 2 /nobreak >nul\r\n"
+            f'"{setup}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART '
+            f'/CLOSEAPPLICATIONS /SP- /LOG="{setup}.log"\r\n'
+            "if errorlevel 1 exit /b %errorlevel%\r\n"
+            f'timeout /t 1 /nobreak >nul\r\n'
+            f'start "" "{executable_installe}"\r\n'
+            f'del /q "{setup}"\r\n'
+            'del /q "%~f0"\r\n'
+        )
+        with open(script, "w", encoding="utf-8") as fichier:
+            fichier.write(contenu)
+
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        subprocess.Popen(
+            ["cmd", "/c", script],
+            creationflags=creationflags,
+            close_fds=True,
+        )
+        self.maj_ecran_update("Installation de la mise à jour…", 100)
+        self.root.after(250, self.root.destroy)
 
     def charger_config(self):
         if os.path.exists(FICHIER_CONFIG):
