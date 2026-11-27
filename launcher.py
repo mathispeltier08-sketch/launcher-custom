@@ -113,6 +113,7 @@ class LauncherApp:
         self.logo_tk = None
         self.avatar_tk = None
         self.bg_interface_label = None
+        self.zone_background = None
         self.page_active = "jouer"
         self.cible_evenement = None
         self.apres_decompte = None
@@ -161,6 +162,8 @@ class LauncherApp:
                 self.canvas.tag_lower(self.fond_id)
             if self.bg_interface_label is not None and self.bg_interface_label.winfo_exists():
                 self.bg_interface_label.config(image=self.fond_tk)
+            if self.zone_background is not None and self.zone_background.winfo_exists():
+                self.zone_background.config(image=self.fond_tk)
 
     def vider_interface(self):
         if self.apres_decompte:
@@ -213,8 +216,10 @@ class LauncherApp:
         pseudo = self.config.get("pseudo", "")
         self.profil_frame = tk.Frame(self.sidebar, bg="#17141F")
         self.profil_frame.pack(pady=(0, 18))
-        self.avatar_label = tk.Label(self.profil_frame, bg="#17141F", bd=0)
+        self.avatar_label = tk.Label(self.profil_frame, bg="#17141F", bd=0,
+                                     width=52, height=52, compound="center")
         self.avatar_label.pack(side="left", padx=(0, 10))
+        self.avatar_label.pack_propagate(False)
         tk.Label(self.profil_frame, text=pseudo, font=("Segoe UI", 13, "bold"),
                  bg="#17141F", fg="#FFFFFF").pack(side="left")
         threading.Thread(target=self.charger_tete_skin, args=(pseudo,), daemon=True).start()
@@ -230,7 +235,7 @@ class LauncherApp:
         self.zone_droite.pack(side="left", fill="both", expand=True)
         self.zone_background = tk.Label(self.zone_droite, image=self.fond_tk, bg="#111019", bd=0)
         self.zone_background.place(x=0, y=0, relwidth=1, relheight=1)
-        self.contenu = tk.Frame(self.zone_droite, bg="#17141F", highlightthickness=0)
+        self.contenu = tk.Frame(self.zone_droite, bg="#111019", highlightthickness=0)
         self.contenu.pack(fill="both", expand=True, padx=52, pady=(52, 126))
 
         self.footer = tk.Frame(self.zone_droite, bg="#17141F", height=88)
@@ -269,8 +274,15 @@ class LauncherApp:
             req = urllib.request.Request(url, headers={"User-Agent": "Manille-et-Mathis-Launcher"})
             with urllib.request.urlopen(req, timeout=10) as reponse:
                 image = Image.open(io.BytesIO(reponse.read())).convert("RGBA")
-            image = image.resize((56, 56), Image.Resampling.NEAREST)
-            self.avatar_tk = ImageTk.PhotoImage(image)
+            # Uniformise toutes les réponses de l'API dans un carré exact 48 x 48.
+            cote = min(image.width, image.height)
+            gauche = max(0, (image.width - cote) // 2)
+            haut = max(0, (image.height - cote) // 2)
+            image = image.crop((gauche, haut, gauche + cote, haut + cote))
+            image = image.resize((48, 48), Image.Resampling.NEAREST)
+            cadre = Image.new("RGBA", (52, 52), (0, 0, 0, 0))
+            cadre.paste(image, (2, 2), image)
+            self.avatar_tk = ImageTk.PhotoImage(cadre)
             self.root.after(0, lambda: self.avatar_label.config(image=self.avatar_tk)
                             if self.avatar_label.winfo_exists() else None)
         except Exception:
@@ -278,7 +290,7 @@ class LauncherApp:
 
     def afficher_page_parametres(self):
         panneau = tk.Frame(self.contenu, bg="#17141F")
-        panneau.place(relx=.5, rely=.46, anchor="center", width=430, height=310)
+        panneau.place(x=0, y=0, relwidth=1, relheight=1)
         tk.Label(panneau, text="Paramètres", font=("Segoe UI", 22, "bold"),
                  bg="#17141F", fg="#FFFFFF").pack(pady=(18, 18))
         ram = tk.IntVar(value=self.config.get("ram", 4))
@@ -303,8 +315,9 @@ class LauncherApp:
                       couleur="#8253C7", survol="#9766DD").pack(pady=14)
 
     def afficher_page_jouer(self):
-        centre = tk.Frame(self.contenu, bg="#17141F")
-        centre.place(relx=.5, rely=.5, anchor="center")
+        centre = tk.Frame(self.contenu, bg="#17141F", highlightthickness=1,
+                          highlightbackground="#4B3A60")
+        centre.place(x=0, y=0, relwidth=1, relheight=1)
         tk.Label(centre, text="Prochain événement", font=("Segoe UI", 15),
                  bg="#17141F", fg="#BCA8D0").pack(pady=(0, 16))
         self.label_decompte = tk.Label(centre, text="Chargement…",
