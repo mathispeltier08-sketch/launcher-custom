@@ -1,12 +1,12 @@
 {
-  "version": "1.0.24",
+  "version": "1.0.25",
   "downloads": {
     "windows": {
       "url": "https://github.com/mathispeltier08-sketch/launcher-custom/releases/download/auto-build/Manille-et-Mathis-Launcher-Setup.exe",
       "sha256": "sha256:95aecc28f143331b28935cb86ffb78e395e4417c562add0851dfc84d1dcc8ad0"
     },
     "linux": {
-      "url": "https://github.com/mathispeltier08-sketch/launcher-custom/releases/download/auto-build/Manille-et-Mathis-Launcher-Linux.tar.gz",
+      "url": "https://github.com/mathispeltier08-sketch/launcher-custom/releases/download/auto-build/Manille-et-Mathis-Launcher-Linux-x86_64.AppImage",
       "sha256": "sha256:c890cfe6f7ab7725afc75e32c0058965ae72fb42aaeb381cd52f9fe34ec96f40"
     },
     "macos_intel": {
