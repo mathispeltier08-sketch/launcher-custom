@@ -26,7 +26,7 @@ NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 DOSSIER_NOM = ".manille-et-mathis"
-VERSION_LAUNCHER = "1.0.1"
+VERSION_LAUNCHER = "1.0.2"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 # --------------------------------
 
@@ -165,7 +165,7 @@ class LauncherApp:
 
         self.label_statut = tk.Label(
             self.carte,
-            text="Prêt pour la fête ✨",
+            text="",
             font=("Segoe UI", 9),
             bg="#241535",
             fg="#CDB8E8",
@@ -189,7 +189,7 @@ class LauncherApp:
 
         tk.Label(
             self.carte,
-            text=f"Launcher v{VERSION_LAUNCHER}  •  Minecraft {VERSION_MC}  •  Pack vérifié",
+            text=f"Launcher v{VERSION_LAUNCHER}",
             font=("Segoe UI", 8),
             bg="#241535",
             fg="#927CA9",
@@ -197,7 +197,8 @@ class LauncherApp:
 
         self.root.bind("<Configure>", self.redimensionner_interface)
         self.root.after(20, self.redimensionner_interface)
-        self.root.after(1200, self.demarrer_verification_mise_a_jour)
+        self.creer_ecran_chargement()
+        self.root.after(300, self.demarrer_verification_mise_a_jour)
 
     def redimensionner_interface(self, event=None):
         largeur = max(self.root.winfo_width(), 1)
@@ -229,6 +230,63 @@ class LauncherApp:
             )
             self.canvas.tag_lower(self.fond_canvas)
 
+    def creer_ecran_chargement(self):
+        self.ecran_chargement = tk.Frame(self.carte, bg="#241535")
+        self.ecran_chargement.place(x=0, y=0, relwidth=1, relheight=1)
+        self.ecran_chargement.lift()
+
+        tk.Label(
+            self.ecran_chargement,
+            text="✦ ÉDITION ANNIVERSAIRE ✦",
+            font=("Segoe UI", 10, "bold"),
+            bg="#241535",
+            fg="#E4B64F",
+        ).pack(pady=(90, 18))
+        tk.Label(
+            self.ecran_chargement,
+            text="Mise à jour du launcher",
+            font=("Segoe UI", 20, "bold"),
+            bg="#241535",
+            fg="#FFFFFF",
+        ).pack()
+        self.label_update = tk.Label(
+            self.ecran_chargement,
+            text="Vérification des mises à jour…",
+            font=("Segoe UI", 10),
+            bg="#241535",
+            fg="#DCCAF5",
+        )
+        self.label_update.pack(pady=(18, 12))
+
+        self.canvas_progression = tk.Canvas(
+            self.ecran_chargement, width=320, height=12,
+            bg="#38234C", highlightthickness=0, bd=0
+        )
+        self.canvas_progression.pack()
+        self.barre_progression = self.canvas_progression.create_rectangle(
+            0, 0, 0, 12, fill="#8A4FFF", outline=""
+        )
+        self.pourcentage_update = tk.Label(
+            self.ecran_chargement, text="", font=("Segoe UI", 9),
+            bg="#241535", fg="#A993C2"
+        )
+        self.pourcentage_update.pack(pady=(8, 0))
+
+    def maj_ecran_update(self, texte, pourcentage=None):
+        def appliquer():
+            self.label_update.config(text=texte)
+            if pourcentage is None:
+                self.pourcentage_update.config(text="")
+            else:
+                valeur = max(0, min(100, int(pourcentage)))
+                self.canvas_progression.coords(self.barre_progression, 0, 0, 3.2 * valeur, 12)
+                self.pourcentage_update.config(text=f"{valeur} %")
+        self.root.after(0, appliquer)
+
+    def terminer_ecran_chargement(self):
+        self.maj_ecran_update("Launcher à jour", 100)
+        self.root.after(450, self.ecran_chargement.destroy)
+
     @staticmethod
     def comparer_versions(a, b):
         def normaliser(v):
@@ -256,67 +314,100 @@ class LauncherApp:
 
     def verifier_mise_a_jour(self):
         try:
+            self.maj_ecran_update("Vérification des mises à jour…", 5)
             ctx = ssl.create_default_context(cafile=certifi.where())
-            req = urllib.request.Request(URL_UPDATE_JSON, headers={"User-Agent": "Manille-et-Mathis-Launcher"})
-            with urllib.request.urlopen(req, context=ctx, timeout=10) as reponse:
+            req = urllib.request.Request(
+                URL_UPDATE_JSON,
+                headers={"User-Agent": "Manille-et-Mathis-Launcher"},
+            )
+            with urllib.request.urlopen(req, context=ctx, timeout=15) as reponse:
                 donnees = json.loads(reponse.read().decode("utf-8"))
+
             version = str(donnees.get("version", "")).strip()
             url = str(donnees.get("download_url", "")).strip()
             sha256 = str(donnees.get("sha256", "")).strip().lower()
-            message = str(donnees.get("message", "Une nouvelle version est disponible.")).strip()
-            if version and url and self.comparer_versions(VERSION_LAUNCHER, version) < 0:
-                self.root.after(0, lambda: self.proposer_mise_a_jour(version, url, sha256, message))
+
+            if not version or not url:
+                raise RuntimeError("Le fichier update.json est incomplet.")
+
+            if self.comparer_versions(VERSION_LAUNCHER, version) < 0:
+                self.telecharger_setup(version, url, sha256)
+            else:
+                self.root.after(0, self.terminer_ecran_chargement)
         except Exception as erreur:
-            print(f"Mise à jour non vérifiée : {erreur}")
+            self.root.after(0, lambda: self.afficher_erreur_update(str(erreur)))
 
-    def proposer_mise_a_jour(self, version, url, sha256, message):
-        texte = f"La version {version} est disponible.\n\n{message}\n\nL'installer maintenant ?"
-        if messagebox.askyesno("Mise à jour disponible", texte):
-            self.btn_jouer.config(state="disabled", bg="#563899")
-            threading.Thread(target=self.telecharger_mise_a_jour, args=(version, url, sha256), daemon=True).start()
+    def afficher_erreur_update(self, detail):
+        self.maj_ecran_update("Mise à jour impossible", 0)
+        messagebox.showerror(
+            "Mise à jour obligatoire",
+            "La mise à jour n'a pas pu être vérifiée ou installée.\n\n"
+            "Vérifiez votre connexion Internet puis relancez le launcher.\n\n"
+            f"Détail : {detail}",
+        )
+        self.root.destroy()
 
-    def telecharger_mise_a_jour(self, version, url, sha256_attendu):
+    def telecharger_setup(self, version, url, sha256_attendu):
         fichier_temp = None
         try:
-            self.maj_statut(f"Téléchargement de la mise à jour {version}...")
-            extension = os.path.splitext(urllib.parse.urlparse(url).path)[1]
-            extension = extension or (".exe" if getattr(sys, "frozen", False) else ".py")
-            fd, fichier_temp = tempfile.mkstemp(prefix="launcher_update_", suffix=extension)
+            self.maj_ecran_update(f"Téléchargement de la version {version}…", 10)
+            fd, fichier_temp = tempfile.mkstemp(prefix="launcher_setup_", suffix=".exe")
             os.close(fd)
-            ctx = ssl.create_default_context(cafile=certifi.where())
-            req = urllib.request.Request(url, headers={"User-Agent": "Manille-et-Mathis-Launcher"})
-            with urllib.request.urlopen(req, context=ctx, timeout=60) as reponse, open(fichier_temp, "wb") as sortie:
-                shutil.copyfileobj(reponse, sortie)
-            if not os.path.getsize(fichier_temp):
-                raise RuntimeError("Le fichier téléchargé est vide.")
-            if sha256_attendu and self.calculer_sha256(fichier_temp) != sha256_attendu:
-                raise RuntimeError("Le contrôle SHA-256 de la mise à jour a échoué.")
-            self.maj_statut("Installation de la mise à jour...")
-            self.installer_mise_a_jour(fichier_temp)
-        except Exception as erreur:
-            if fichier_temp and os.path.exists(fichier_temp):
-                try: os.remove(fichier_temp)
-                except OSError: pass
-            self.root.after(0, lambda: messagebox.showerror("Mise à jour impossible", str(erreur)))
-            self.root.after(0, lambda: self.btn_jouer.config(state="normal", bg="#8A4FFF"))
-            self.maj_statut("Prêt à jouer")
 
-    def installer_mise_a_jour(self, nouveau_fichier):
-        cible = os.path.abspath(sys.executable if getattr(sys, "frozen", False) else sys.argv[0])
+            ctx = ssl.create_default_context(cafile=certifi.where())
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "Manille-et-Mathis-Launcher"}
+            )
+            with urllib.request.urlopen(req, context=ctx, timeout=120) as reponse, open(fichier_temp, "wb") as sortie:
+                taille = int(reponse.headers.get("Content-Length", 0) or 0)
+                recu = 0
+                while True:
+                    bloc = reponse.read(1024 * 256)
+                    if not bloc:
+                        break
+                    sortie.write(bloc)
+                    recu += len(bloc)
+                    progression = 10 + (70 * recu / taille) if taille else 45
+                    self.maj_ecran_update(
+                        f"Téléchargement de la version {version}…", progression
+                    )
+
+            if not os.path.getsize(fichier_temp):
+                raise RuntimeError("Le setup téléchargé est vide.")
+
+            self.maj_ecran_update("Vérification de la mise à jour…", 85)
+            if sha256_attendu:
+                sha256_recu = self.calculer_sha256(fichier_temp)
+                if sha256_recu != sha256_attendu:
+                    raise RuntimeError("Le contrôle SHA-256 du setup a échoué.")
+
+            self.maj_ecran_update("Installation automatique…", 95)
+            self.lancer_setup_silencieux(fichier_temp)
+        except Exception:
+            if fichier_temp and os.path.exists(fichier_temp):
+                try:
+                    os.remove(fichier_temp)
+                except OSError:
+                    pass
+            raise
+
+    def lancer_setup_silencieux(self, setup):
         if sys.platform != "win32":
-            raise RuntimeError("Le remplacement automatique est actuellement prévu pour Windows.")
-        script = os.path.join(tempfile.gettempdir(), "maj_launcher.bat")
-        contenu = (
-            "@echo off\r\n"
-            "timeout /t 2 /nobreak >nul\r\n"
-            f'copy /y "{nouveau_fichier}" "{cible}" >nul\r\n'
-            f'start "" "{cible}"\r\n'
-            'del "%~f0"\r\n'
-        )
-        with open(script, "w", encoding="utf-8") as fichier:
-            fichier.write(contenu)
-        subprocess.Popen(["cmd", "/c", script], creationflags=subprocess.CREATE_NO_WINDOW)
-        self.root.after(0, self.root.destroy)
+            raise RuntimeError("La mise à jour automatique nécessite Windows.")
+
+        # /RESTARTAPPLICATIONS demande au setup de relancer le launcher inscrit dans [Run].
+        commande = [
+            setup,
+            "/VERYSILENT",
+            "/SUPPRESSMSGBOXES",
+            "/NORESTART",
+            "/CLOSEAPPLICATIONS",
+            "/RESTARTAPPLICATIONS",
+            "/SP-",
+        ]
+        subprocess.Popen(commande, close_fds=True)
+        self.maj_ecran_update("Redémarrage du launcher…", 100)
+        self.root.after(800, self.root.destroy)
 
     def charger_config(self):
         if os.path.exists(FICHIER_CONFIG):
