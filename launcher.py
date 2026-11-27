@@ -26,12 +26,14 @@ ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=ce
 
 NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
-VERSION_LAUNCHER = "1.0.20"
+VERSION_LAUNCHER = "1.0.21"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 URL_EVENEMENT_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/evenement.json"
 URL_INSCRIPTION = "https://manille.djmathis.fr/user/register"
 URL_AZURIOM_AUTH = "https://manille.djmathis.fr/api/auth/authenticate"
+URL_DISTANT_HORIZONS = "https://edge.forgecdn.net/files/9004/743/DistantHorizons-3.3.3-1.12.2-forge.jar"
+NOM_DISTANT_HORIZONS = "DistantHorizons-3.3.3-1.12.2-forge.jar"
 DOSSIER_NOM = ".manille-et-mathis"
 
 
@@ -385,7 +387,7 @@ class LauncherApp:
 
     def afficher_page_parametres(self):
         panneau = tk.Frame(self.contenu, bg="#17141F")
-        panneau.place(relx=.5, rely=.5, anchor="center", width=430, height=310)
+        panneau.place(relx=.5, rely=.5, anchor="center", width=430, height=390)
         tk.Label(panneau, text="Paramètres", font=("Segoe UI", 22, "bold"),
                  bg="#17141F", fg="#FFFFFF").pack(pady=(18, 18))
         ram = tk.IntVar(value=self.config.get("ram", 4))
@@ -407,7 +409,71 @@ class LauncherApp:
             self.sauvegarder_config()
             self.maj_statut("Paramètres enregistrés")
         BoutonArrondi(panneau, "✓  Enregistrer", enregistrer, largeur=220,
-                      couleur="#8253C7", survol="#9766DD").pack(pady=14)
+                      couleur="#8253C7", survol="#9766DD").pack(pady=(12, 8))
+        dh_installe = self.config.get("distant_horizons", False)
+        texte_dh = "Supprimer Distant Horizons" if dh_installe else "Installer Distant Horizons"
+        couleur_dh = "#673B50" if dh_installe else "#2F7658"
+        BoutonArrondi(panneau, texte_dh, self.basculer_distant_horizons, largeur=260,
+                      couleur=couleur_dh,
+                      survol="#8B506B" if dh_installe else "#4B936F").pack(pady=6)
+
+    def chemins_distant_horizons(self):
+        cache = os.path.join(DOSSIER_JEU, "mods_optionnels", NOM_DISTANT_HORIZONS)
+        mod = os.path.join(DOSSIER_JEU, "mods", NOM_DISTANT_HORIZONS)
+        return cache, mod
+
+    def basculer_distant_horizons(self):
+        if self.config.get("distant_horizons", False):
+            cache, mod = self.chemins_distant_horizons()
+            for fichier in (cache, mod):
+                try:
+                    if os.path.exists(fichier):
+                        os.remove(fichier)
+                except OSError:
+                    pass
+            self.config["distant_horizons"] = False
+            self.sauvegarder_config()
+            self.maj_statut("Distant Horizons supprimé")
+            self.afficher_page_parametres()
+            return
+        threading.Thread(target=self.installer_distant_horizons, daemon=True).start()
+
+    def installer_distant_horizons(self):
+        try:
+            self.maj_statut("Téléchargement de Distant Horizons…")
+            cache, mod = self.chemins_distant_horizons()
+            os.makedirs(os.path.dirname(cache), exist_ok=True)
+            os.makedirs(os.path.dirname(mod), exist_ok=True)
+            temporaire = cache + ".part"
+            requete = urllib.request.Request(
+                URL_DISTANT_HORIZONS,
+                headers={"User-Agent": "Manille-et-Mathis-Launcher/1.0"},
+            )
+            contexte = ssl.create_default_context(cafile=certifi.where())
+            with urllib.request.urlopen(requete, context=contexte, timeout=120) as reponse, open(temporaire, "wb") as sortie:
+                shutil.copyfileobj(reponse, sortie)
+            if os.path.getsize(temporaire) < 1024 * 1024:
+                os.remove(temporaire)
+                raise RuntimeError("Le fichier téléchargé est invalide.")
+            os.replace(temporaire, cache)
+            shutil.copy2(cache, mod)
+            self.config["distant_horizons"] = True
+            self.sauvegarder_config()
+            self.maj_statut("Distant Horizons installé")
+            self.root.after(0, self.afficher_page_parametres)
+            self.root.after(0, lambda: messagebox.showinfo(
+                "Distant Horizons", "Installation terminée. Le mod sera conservé après les mises à jour du pack."
+            ))
+        except Exception as erreur:
+            self.root.after(0, lambda: messagebox.showerror("Distant Horizons", str(erreur)))
+
+    def restaurer_distant_horizons(self):
+        if not self.config.get("distant_horizons", False):
+            return
+        cache, mod = self.chemins_distant_horizons()
+        if os.path.isfile(cache):
+            os.makedirs(os.path.dirname(mod), exist_ok=True)
+            shutil.copy2(cache, mod)
 
     def afficher_page_jouer(self):
         # Canvas utilisé pour obtenir du texte sans aucun fond opaque.
@@ -563,7 +629,7 @@ class LauncherApp:
     def charger_config(self):
         try:
             with open(FICHIER_CONFIG,"r",encoding="utf-8") as f:return json.load(f)
-        except Exception:return {"pseudo":"","ram":4,"logs":False}
+        except Exception:return {"pseudo":"","ram":4,"logs":False,"distant_horizons":False}
 
     def sauvegarder_config(self):
         os.makedirs(DOSSIER_JEU,exist_ok=True)
@@ -602,6 +668,7 @@ class LauncherApp:
         with zipfile.ZipFile(temp) as archive:
             archive.extractall(DOSSIER_JEU)
         os.remove(temp)
+        self.restaurer_distant_horizons()
         if session_auth:
             os.makedirs(os.path.dirname(FICHIER_SESSION_AUTH), exist_ok=True)
             with open(FICHIER_SESSION_AUTH, "wb") as session:
@@ -639,9 +706,22 @@ class LauncherApp:
             self.synchroniser_pack(); self.maj_statut("Lancement du jeu…")
             opts={"username":pseudo,"uuid":"","token":"","jvmArguments":[f'-Xmx{self.config.get("ram",4)}G','-Xms2G']}
             cmd = minecraft_launcher_lib.command.get_minecraft_command(version, DOSSIER_JEU, opts)
-            processus = subprocess.Popen(cmd, cwd=DOSSIER_JEU,
-                stdout=None if self.config.get("logs") else subprocess.DEVNULL,
-                stderr=None if self.config.get("logs") else subprocess.DEVNULL)
+            options_processus = {
+                "cwd": DOSSIER_JEU,
+                "stdin": subprocess.DEVNULL,
+                "stdout": None if self.config.get("logs") else subprocess.DEVNULL,
+                "stderr": None if self.config.get("logs") else subprocess.DEVNULL,
+            }
+            if sys.platform == "win32":
+                javaw = os.path.join(os.path.dirname(str(cmd[0])), "javaw.exe")
+                if os.path.isfile(javaw):
+                    cmd[0] = javaw
+                options_processus["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = subprocess.SW_HIDE
+                options_processus["startupinfo"] = startupinfo
+            processus = subprocess.Popen(cmd, **options_processus)
             self.root.after(0, self.root.withdraw)
             processus.wait()
             self.root.after(0, self.restaurer_apres_jeu)
