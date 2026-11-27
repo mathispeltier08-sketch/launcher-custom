@@ -26,7 +26,7 @@ NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 DOSSIER_NOM = ".manille-et-mathis"
-VERSION_LAUNCHER = "1.0.6"
+VERSION_LAUNCHER = "1.0.7"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 # --------------------------------
 
@@ -103,12 +103,11 @@ class LauncherApp:
             highlightbackground="#5E4378",
         )
         self.carte_fenetre = self.canvas.create_window(
-            450, 280, window=self.carte, width=390, height=360
+            450, 280, window=self.carte, width=390, height=430
         )
 
-        # Ce label reste caché, mais permet aux opérations de mise à jour
-        # et de lancement de conserver leur suivi interne.
-        self.label_statut = tk.Label(self.carte, text="", bg="#241535")
+        # Le statut est recréé sur la page connectée, sous le bouton Jouer.
+        self.label_statut = None
 
         pseudo = self.config.get("pseudo", "").strip()
         if pseudo:
@@ -123,8 +122,8 @@ class LauncherApp:
 
     def vider_carte(self):
         for widget in self.carte.winfo_children():
-            if widget is not self.label_statut:
-                widget.destroy()
+            widget.destroy()
+        self.label_statut = None
 
     def afficher_logo(self, parent, marge_haut=(35, 25)):
         if self.logo_tk is not None:
@@ -238,6 +237,15 @@ class LauncherApp:
         )
         self.btn_jouer.pack(ipady=8)
 
+        self.label_statut = tk.Label(
+            self.carte,
+            text="",
+            font=("Segoe UI", 9),
+            bg="#241535",
+            fg="#CDB8E8",
+        )
+        self.label_statut.pack(pady=(8, 0))
+
         tk.Button(
             self.carte,
             text="Paramètres",
@@ -250,7 +258,7 @@ class LauncherApp:
             cursor="hand2",
             width=22,
             command=self.ouvrir_parametres,
-        ).pack(pady=(12, 0), ipady=6)
+        ).pack(pady=(10, 0), ipady=6)
 
     def se_deconnecter(self):
         self.config["pseudo"] = ""
@@ -584,7 +592,10 @@ class LauncherApp:
         ).pack(ipady=3)
 
     def maj_statut(self, texte):
-        self.root.after(0, lambda: self.label_statut.config(text=texte))
+        def appliquer():
+            if self.label_statut is not None and self.label_statut.winfo_exists():
+                self.label_statut.config(text=texte)
+        self.root.after(0, appliquer)
 
     def nettoyer_fichiers_vides(self):
         dossier_lib = os.path.join(DOSSIER_JEU, "libraries")
