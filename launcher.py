@@ -28,7 +28,7 @@ ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=ce
 
 NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
-VERSION_LAUNCHER = "1.0.24"
+VERSION_LAUNCHER = "1.0.25"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 URL_EVENEMENT_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/evenement.json"
