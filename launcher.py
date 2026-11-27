@@ -5,6 +5,9 @@ import ssl
 import shutil
 import zipfile
 import urllib.request
+import urllib.parse
+import webbrowser
+import io
 import subprocess
 import threading
 import tempfile
@@ -23,10 +26,11 @@ ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=ce
 
 NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
-VERSION_LAUNCHER = "1.0.8"
+VERSION_LAUNCHER = "1.0.9"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 URL_EVENEMENT_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/evenement.json"
+URL_INSCRIPTION = "https://manille.djmathis.fr/user/register"
 DOSSIER_NOM = ".manille-et-mathis"
 
 
@@ -107,6 +111,8 @@ class LauncherApp:
         self.fond_original = None
         self.fond_tk = None
         self.logo_tk = None
+        self.avatar_tk = None
+        self.bg_interface_label = None
         self.page_active = "jouer"
         self.cible_evenement = None
         self.apres_decompte = None
@@ -153,6 +159,8 @@ class LauncherApp:
             else:
                 self.fond_id = self.canvas.create_image(0, 0, anchor="nw", image=self.fond_tk)
                 self.canvas.tag_lower(self.fond_id)
+            if self.bg_interface_label is not None and self.bg_interface_label.winfo_exists():
+                self.bg_interface_label.config(image=self.fond_tk)
 
     def vider_interface(self):
         if self.apres_decompte:
@@ -177,8 +185,10 @@ class LauncherApp:
             highlightthickness=1, highlightbackground="#554567", highlightcolor="#956ECA")
         self.entree_pseudo.pack(ipady=10, ipadx=16, padx=54, fill="x", pady=(0, 20))
         self.entree_pseudo.bind("<Return>", lambda e: self.se_connecter())
-        BoutonArrondi(panneau, "Se connecter", self.se_connecter, largeur=290,
-                      couleur="#8253C7", survol="#9766DD").pack()
+        BoutonArrondi(panneau, "●  Se connecter", self.se_connecter, largeur=290,
+                      couleur="#8253C7", survol="#9766DD").pack(pady=(0, 10))
+        BoutonArrondi(panneau, "＋  Inscription", lambda: webbrowser.open(URL_INSCRIPTION),
+                      largeur=290, couleur="#2B2536", survol="#443456").pack()
 
     def se_connecter(self):
         pseudo = self.entree_pseudo.get().strip()
@@ -192,27 +202,37 @@ class LauncherApp:
     def afficher_interface_connectee(self):
         self.vider_interface()
         self.interface.configure(bg="#111019")
+        self.bg_interface_label = tk.Label(self.interface, image=self.fond_tk, bg="#111019", bd=0)
+        self.bg_interface_label.place(x=0, y=0, relwidth=1, relheight=1)
 
         self.sidebar = tk.Frame(self.interface, bg="#17141F", width=245)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
-        self.logo(self.sidebar, (24, 28))
+        self.logo(self.sidebar, (20, 18))
 
         pseudo = self.config.get("pseudo", "")
-        tk.Label(self.sidebar, text=pseudo, font=("Segoe UI", 13, "bold"),
-                 bg="#17141F", fg="#FFFFFF").pack(pady=(0, 24))
+        self.profil_frame = tk.Frame(self.sidebar, bg="#17141F")
+        self.profil_frame.pack(pady=(0, 22))
+        self.avatar_label = tk.Label(self.profil_frame, bg="#17141F", width=56, height=56)
+        self.avatar_label.pack(side="left", padx=(0, 10))
+        tk.Label(self.profil_frame, text=pseudo, font=("Segoe UI", 13, "bold"),
+                 bg="#17141F", fg="#FFFFFF").pack(side="left")
+        threading.Thread(target=self.charger_tete_skin, args=(pseudo,), daemon=True).start()
 
-        BoutonArrondi(self.sidebar, "Accueil", lambda: self.changer_page("jouer"),
+        BoutonArrondi(self.sidebar, "⌂  Accueil", lambda: self.changer_page("jouer"),
                       couleur="#2B2536", survol="#443456").pack(pady=5)
-        BoutonArrondi(self.sidebar, "Paramètres", self.ouvrir_parametres,
+        BoutonArrondi(self.sidebar, "⚙  Paramètres", lambda: self.changer_page("parametres"),
                       couleur="#2B2536", survol="#443456").pack(pady=5)
-        BoutonArrondi(self.sidebar, "Se déconnecter", self.se_deconnecter,
+        BoutonArrondi(self.sidebar, "↪  Se déconnecter", self.se_deconnecter,
                       couleur="#2B2536", survol="#673B50").pack(side="bottom", pady=24)
 
         self.zone_droite = tk.Frame(self.interface, bg="#111019")
         self.zone_droite.pack(side="left", fill="both", expand=True)
-        self.contenu = tk.Frame(self.zone_droite, bg="#111019")
-        self.contenu.pack(fill="both", expand=True)
+        self.zone_background = tk.Label(self.zone_droite, image=self.fond_tk, bg="#111019", bd=0)
+        self.zone_background.place(x=0, y=0, relwidth=1, relheight=1)
+        self.contenu = tk.Frame(self.zone_droite, bg="#17141F", highlightthickness=1,
+                                highlightbackground="#4B3A60")
+        self.contenu.pack(fill="both", expand=True, padx=34, pady=(34, 112))
 
         self.footer = tk.Frame(self.zone_droite, bg="#17141F", height=88)
         self.footer.pack(fill="x", side="bottom")
@@ -220,7 +240,7 @@ class LauncherApp:
         self.label_statut = tk.Label(self.footer, text="", font=("Segoe UI", 9),
                                      bg="#17141F", fg="#BCA8D0")
         self.label_statut.pack(side="left", padx=28)
-        self.btn_jouer = BoutonArrondi(self.footer, "Jouer", self.demarrer_lancement,
+        self.btn_jouer = BoutonArrondi(self.footer, "▶  Jouer", self.demarrer_lancement,
                                        largeur=220, hauteur=48, couleur="#8253C7",
                                        survol="#9969DD", rayon=20,
                                        police=("Segoe UI", 12, "bold"))
@@ -238,18 +258,61 @@ class LauncherApp:
     def changer_page(self, page):
         self.page_active = page
         for w in self.contenu.winfo_children(): w.destroy()
-        if page == "jouer": self.afficher_page_jouer()
+        if page == "jouer":
+            self.afficher_page_jouer()
+        elif page == "parametres":
+            self.afficher_page_parametres()
+
+    def charger_tete_skin(self, pseudo):
+        try:
+            nom = urllib.parse.quote(pseudo)
+            url = f"https://api.mcskin.me/head/{nom}?size=96"
+            req = urllib.request.Request(url, headers={"User-Agent": "Manille-et-Mathis-Launcher"})
+            with urllib.request.urlopen(req, timeout=10) as reponse:
+                image = Image.open(io.BytesIO(reponse.read())).convert("RGBA")
+            image = image.resize((56, 56), Image.Resampling.NEAREST)
+            self.avatar_tk = ImageTk.PhotoImage(image)
+            self.root.after(0, lambda: self.avatar_label.config(image=self.avatar_tk, width=56, height=56)
+                            if self.avatar_label.winfo_exists() else None)
+        except Exception:
+            pass
+
+    def afficher_page_parametres(self):
+        panneau = tk.Frame(self.contenu, bg="#17141F")
+        panneau.place(relx=.5, rely=.46, anchor="center", width=430, height=310)
+        tk.Label(panneau, text="Paramètres", font=("Segoe UI", 22, "bold"),
+                 bg="#17141F", fg="#FFFFFF").pack(pady=(18, 18))
+        ram = tk.IntVar(value=self.config.get("ram", 4))
+        valeur = tk.Label(panneau, text=f"Mémoire RAM : {ram.get()} Go",
+                          font=("Segoe UI", 12, "bold"), bg="#17141F", fg="#BCA8D0")
+        valeur.pack()
+        tk.Scale(panneau, from_=2, to=16, orient="horizontal", variable=ram,
+                 showvalue=False, length=300, bg="#17141F", fg="#FFFFFF",
+                 troughcolor="#31283C", highlightthickness=0,
+                 activebackground="#8253C7",
+                 command=lambda v: valeur.config(text=f"Mémoire RAM : {int(float(v))} Go")).pack(pady=12)
+        logs = tk.BooleanVar(value=self.config.get("logs", False))
+        tk.Checkbutton(panneau, text="Afficher la console de logs", variable=logs,
+                       font=("Segoe UI", 10), bg="#17141F", fg="#FFFFFF",
+                       selectcolor="#2B2536", activebackground="#17141F",
+                       activeforeground="#FFFFFF").pack(pady=8)
+        def enregistrer():
+            self.config.update(ram=ram.get(), logs=logs.get())
+            self.sauvegarder_config()
+            self.maj_statut("Paramètres enregistrés")
+        BoutonArrondi(panneau, "✓  Enregistrer", enregistrer, largeur=220,
+                      couleur="#8253C7", survol="#9766DD").pack(pady=14)
 
     def afficher_page_jouer(self):
-        centre = tk.Frame(self.contenu, bg="#111019")
+        centre = tk.Frame(self.contenu, bg="#17141F")
         centre.place(relx=.5, rely=.46, anchor="center")
         tk.Label(centre, text="Prochain événement", font=("Segoe UI", 15),
-                 bg="#111019", fg="#BCA8D0").pack(pady=(0, 16))
+                 bg="#17141F", fg="#BCA8D0").pack(pady=(0, 16))
         self.label_decompte = tk.Label(centre, text="Chargement…",
-            font=("Segoe UI", 34, "bold"), bg="#111019", fg="#FFFFFF")
+            font=("Segoe UI", 34, "bold"), bg="#17141F", fg="#FFFFFF")
         self.label_decompte.pack()
         self.label_date = tk.Label(centre, text="", font=("Segoe UI", 11),
-                                   bg="#111019", fg="#8F819E")
+                                   bg="#17141F", fg="#8F819E")
         self.label_date.pack(pady=(12, 0))
         threading.Thread(target=self.charger_evenement, daemon=True).start()
 
@@ -292,7 +355,7 @@ class LauncherApp:
         self.chargement.place(relx=0, rely=0, relwidth=1, relheight=1)
         self.chargement.lift()
         self.label_update = tk.Label(self.chargement, text="Vérification…",
-            font=("Segoe UI", 15, "bold"), bg="#111019", fg="#FFFFFF")
+            font=("Segoe UI", 15, "bold"), bg="#17141F", fg="#FFFFFF")
         self.label_update.place(relx=.5, rely=.48, anchor="center")
         self.barre = tk.Canvas(self.chargement, width=320, height=8, bg="#292431",
                                highlightthickness=0)
