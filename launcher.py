@@ -26,7 +26,7 @@ ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=ce
 
 NOM_SERVEUR = "Manille et Mathis"
 VERSION_MC = "1.12.2"
-VERSION_LAUNCHER = "1.0.16"
+VERSION_LAUNCHER = "1.0.17"
 URL_PACK_ZIP = "https://worldofdisneycraft.fr/packserveurs.zip"
 URL_UPDATE_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/update.json"
 URL_EVENEMENT_JSON = "https://raw.githubusercontent.com/mathispeltier08-sketch/launcher-custom/main/evenement.json"
@@ -577,39 +577,16 @@ class LauncherApp:
         self.root.after(0,lambda:self.label_statut.config(text=texte) if hasattr(self,"label_statut") and self.label_statut.winfo_exists() else None)
 
     def synchroniser_pack(self):
-        self.maj_statut("Téléchargement du pack…")
-        os.makedirs(DOSSIER_JEU, exist_ok=True)
-        temp = os.path.join(DOSSIER_JEU, "pack_temp.zip")
-
-        # La synchronisation remplace le dossier config. On conserve donc la
-        # session Azuriom avant la suppression, puis on la restaure juste après.
-        session_auth = None
-        if os.path.exists(FICHIER_SESSION_AUTH):
-            with open(FICHIER_SESSION_AUTH, "rb") as session:
-                session_auth = session.read()
-
-        req = urllib.request.Request(URL_PACK_ZIP, headers={"User-Agent": "Launcher"})
-        ctx = ssl.create_default_context(cafile=certifi.where())
-        with urllib.request.urlopen(req, context=ctx) as r, open(temp, "wb") as out:
-            shutil.copyfileobj(r, out)
-
-        for dossier in ["mods", "config", "fancymenu_data", "fancymenu_setups"]:
-            cible = os.path.join(DOSSIER_JEU, dossier)
-            if os.path.exists(cible):
-                shutil.rmtree(cible, ignore_errors=True)
-
-        with zipfile.ZipFile(temp) as archive:
-            archive.extractall(DOSSIER_JEU)
+        self.maj_statut("Téléchargement du pack…"); os.makedirs(DOSSIER_JEU,exist_ok=True)
+        temp=os.path.join(DOSSIER_JEU,"pack_temp.zip")
+        req=urllib.request.Request(URL_PACK_ZIP,headers={"User-Agent":"Launcher"})
+        ctx=ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(req,context=ctx) as r,open(temp,"wb") as out: shutil.copyfileobj(r,out)
+        for d in ["mods","config","fancymenu_data","fancymenu_setups"]:
+            cible=os.path.join(DOSSIER_JEU,d)
+            if os.path.exists(cible): shutil.rmtree(cible,ignore_errors=True)
+        with zipfile.ZipFile(temp) as z:z.extractall(DOSSIER_JEU)
         os.remove(temp)
-
-        if session_auth is not None:
-            os.makedirs(os.path.dirname(FICHIER_SESSION_AUTH), exist_ok=True)
-            with open(FICHIER_SESSION_AUTH, "wb") as session:
-                session.write(session_auth)
-            try:
-                os.chmod(FICHIER_SESSION_AUTH, 0o600)
-            except OSError:
-                pass
 
     def demarrer_lancement(self):
         pseudo=self.config.get("pseudo","").strip()
@@ -625,6 +602,22 @@ class LauncherApp:
         self.btn_jouer.configurer("Préparation…",False)
         threading.Thread(target=self.processus_jeu,args=(pseudo,),daemon=True).start()
 
+    def masquer_pendant_jeu(self):
+        self.root.withdraw()
+
+    def restaurer_apres_jeu(self):
+        if not self.root.winfo_exists():
+            return
+        self.root.deiconify()
+        self.root.lift()
+        try:
+            self.root.focus_force()
+        except Exception:
+            pass
+        if hasattr(self, "btn_jouer") and self.btn_jouer.winfo_exists():
+            self.btn_jouer.configurer("▶  Jouer", True)
+        self.maj_statut("Jeu fermé")
+
     def processus_jeu(self,pseudo):
         try:
             self.maj_statut("Vérification de Forge…")
@@ -635,9 +628,16 @@ class LauncherApp:
                 minecraft_launcher_lib.forge.install_forge_version(forge,DOSSIER_JEU,callback={"setStatus":self.maj_statut})
             self.synchroniser_pack(); self.maj_statut("Lancement du jeu…")
             opts={"username":pseudo,"uuid":"","token":"","jvmArguments":[f'-Xmx{self.config.get("ram",4)}G','-Xms2G']}
-            cmd=minecraft_launcher_lib.command.get_minecraft_command(version,DOSSIER_JEU,opts)
-            subprocess.Popen(cmd,cwd=DOSSIER_JEU,stdout=None if self.config.get("logs") else subprocess.DEVNULL,stderr=None if self.config.get("logs") else subprocess.DEVNULL)
-            self.root.after(1200,self.root.destroy)
+            cmd = minecraft_launcher_lib.command.get_minecraft_command(version, DOSSIER_JEU, opts)
+            processus = subprocess.Popen(
+                cmd,
+                cwd=DOSSIER_JEU,
+                stdout=None if self.config.get("logs") else subprocess.DEVNULL,
+                stderr=None if self.config.get("logs") else subprocess.DEVNULL,
+            )
+            self.root.after(0, self.masquer_pendant_jeu)
+            processus.wait()
+            self.root.after(0, self.restaurer_apres_jeu)
         except Exception as e:
             self.root.after(0,lambda:messagebox.showerror("Erreur",str(e)))
             self.root.after(0,lambda:self.btn_jouer.configurer("Jouer",True))
